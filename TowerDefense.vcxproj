@@ -184,7 +184,13 @@ xcopy /y /d /s  "$(SolutionDir)Assets\*" "$(OutDir)Assets\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Code\src\game.cpp" />
     <ClCompile Include="Code\src\main.cpp" />
+    <ClCompile Include="Code\src\overload.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Code\include\game.h" />
+    <ClInclude Include="Code\include\overload.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

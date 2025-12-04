@@ -1,23 +1,32 @@
 #include <raylib.h>
+#include "game.h"
 
-int main()
-{
-    InitWindow(800, 640, "Tower Defense");
+int main() {
+    InitWindow(1920, 1200, "Tower Defense Simple");
     SetTargetFPS(60);
+
+    HideCursor();
+
+    GameInit();
+
+    GameAssets assets;
+    LoadGameAssets(assets);
 
     while (!WindowShouldClose())
     {
-        // Update
-        
-        BeginDrawing();
-        ClearBackground(BLACK);
+        if (IsKeyPressed(KEY_F)) ToggleFullscreen();
 
-        // Draw
+        GameUpdate(assets);
+
+        BeginDrawing();
+        ClearBackground(DARKGRAY);
+        
+        CustomMouse(assets);
 
         EndDrawing();
     }
 
+    UnloadGameAssets(assets);
     CloseWindow();
-
     return 0;
 }
