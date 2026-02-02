@@ -2,978 +2,2192 @@
 #include <cmath>
 #include <cstdlib>
 #include <ctime>
+#include <algorithm>
+#include <raylib.h>
+#include <fstream>
 
 #include "game.h"
+#include "enum.h"
+#include "castle.h"
+#include "tower.h"
+#include "enemy.h"
+#include "bullet.h"
+#include "assets.h"
+#include "pathpoint.h"
+#include "level.h"
+#include "wave_system.h"
 
 using namespace std;
 
-Castle castle[1];
-Tower towers[10];
-Enemy enemies[1000];
-Bullet bullets[1000];
-TowerType towerTypes[10];
+const char* SAVE_FILE_NAME = "gamedata.sav";
 
-int const MAX_CASTLES = 1;
-int const MAX_TOWERS = 10;
-int const MAX_ENEMIES = 100;
-int const MAX_BULLETS = 1000;
+#include <string>
+namespace {
+    struct RandomMapData {
+        std::string filePath;
+        std::vector<Vector2> pathPoints;
+        Vector2 castlePos{ 0.0f, 0.0f };
+        Texture2D texture{ {0} };
+        bool loaded = false;
+    };
 
-int castleCount = 0;
-int towerCount = 0;
-int enemyCount = 0;
-int bulletCount = 0;
+    static std::vector<RandomMapData> g_randomMaps;
+    static int g_currentRandomMapIndex = -1;
 
-float spawnTimer = 0;
+    static const float g_pathPointRadius = 25.0f;
+    static int g_mapChangeInterval = 1;
 
-TowerType currentDragState = NONE;
-
-Vector2 path[10];
-int pathLength = 0;
-Vector2 spawnPoint = { 0, 600 };
-
-CurrentScreen currentScreen = TITLE;
-
-const Rectangle shopArcherRect = { 1410, 1030, 130, 130 };
-const Rectangle shopWizardRect = { 1580, 1030, 130, 130 };
-const Rectangle shopCatapultRect = { 1750, 1030, 130, 130 };
-
-void LoadGameAssets(GameAssets& assets)
-{
-    assets.mouseTexture = LoadTexture("assets/mouse_cursor.png");
-	assets.titleScreenTexture = LoadTexture("assets/title_screen.png");
-    assets.levelSelectionTexture = LoadTexture("assets/level_selection.png");
-    assets.shopIconTexture = LoadTexture("assets/shop_icon.png");
-
-    // life
-    assets.fullLifeTexture = LoadTexture("Assets/life/full_life.png");
-	assets.life1Texture = LoadTexture("Assets/life/life_1.png");
-	assets.life2Texture = LoadTexture("Assets/life/life_2.png");
-	assets.life3Texture = LoadTexture("Assets/life/life_3.png");
-	assets.life4Texture = LoadTexture("Assets/life/life_4.png");
-    assets.life5Texture = LoadTexture("Assets/life/life_5.png");
-    assets.life6Texture = LoadTexture("Assets/life/life_6.png");
-    assets.life7Texture = LoadTexture("Assets/life/life_7.png");
-    assets.life8Texture = LoadTexture("Assets/life/life_8.png");
-    assets.life9Texture = LoadTexture("Assets/life/life_9.png");
-    assets.life10Texture = LoadTexture("Assets/life/life_10.png");
-    assets.life11Texture = LoadTexture("Assets/life/life_11.png");
-    assets.life12Texture = LoadTexture("Assets/life/life_12.png");
-    assets.life13Texture = LoadTexture("Assets/life/life_13.png");
-    assets.life14Texture = LoadTexture("Assets/life/life_14.png");
-	assets.life15Texture = LoadTexture("Assets/life/life_15.png");
-
-	assets.castleTexture = LoadTexture("Assets/castle/castle.png");
-	assets.archerTexture = LoadTexture("Assets/archer_tower/archer.png");
-    assets.wizardTexture = LoadTexture("Assets/wizard_tower/wizard.png");
-	assets.fireBallTexture = LoadTexture("Assets/wizard_tower/fireBall.png");
-	assets.catapultTexture = LoadTexture("Assets/catapult_tower/catapult.png");
-	assets.lvl1ArcherTowerTexture = LoadTexture("Assets/archer_tower/archer_tower_lvl1.png");
-	assets.lvl1WizardTowerTexture = LoadTexture("Assets/wizard_tower/wizard_tower_lvl1.png");
-	assets.lvl1CatapultTowerTexture = LoadTexture("Assets/catapult_tower/catapult_tower_lvl1.png");
-
-    // normal
-	assets.necromancerTexture = LoadTexture("Assets/enemies/necromancer.png");
-	// fast
-	assets.ferretTexture = LoadTexture("Assets/enemies/ferret.png");
-	// tank
-	assets.cacodaemonTexture = LoadTexture("Assets/enemies/cacodaemon.png");
-}
-
-void UnloadGameAssets(GameAssets& assets)
-{
-    UnloadTexture(assets.mouseTexture);
-	UnloadTexture(assets.titleScreenTexture);
-    UnloadTexture(assets.levelSelectionTexture);
-    UnloadTexture(assets.shopIconTexture);
-
-    // life
-	UnloadTexture(assets.fullLifeTexture);
-	UnloadTexture(assets.life1Texture);
-	UnloadTexture(assets.life2Texture);
-    UnloadTexture(assets.life3Texture);
-    UnloadTexture(assets.life4Texture);
-    UnloadTexture(assets.life5Texture);
-    UnloadTexture(assets.life6Texture);
-    UnloadTexture(assets.life7Texture);
-    UnloadTexture(assets.life8Texture);
-    UnloadTexture(assets.life9Texture);
-    UnloadTexture(assets.life10Texture);
-    UnloadTexture(assets.life11Texture);
-    UnloadTexture(assets.life12Texture);
-    UnloadTexture(assets.life13Texture);
-	UnloadTexture(assets.life14Texture);
-	UnloadTexture(assets.life15Texture);
-
-	UnloadTexture(assets.castleTexture);
-	UnloadTexture(assets.archerTexture);
-    UnloadTexture(assets.wizardTexture);
-	UnloadTexture(assets.fireBallTexture);
-	UnloadTexture(assets.catapultTexture);
-    UnloadTexture(assets.lvl1ArcherTowerTexture);
-	UnloadTexture(assets.lvl1WizardTowerTexture);
-	UnloadTexture(assets.lvl1CatapultTowerTexture);
-
-	UnloadTexture(assets.necromancerTexture);
-	UnloadTexture(assets.ferretTexture);
-	UnloadTexture(assets.cacodaemonTexture);
-}
-
-void CustomMouse(GameAssets& assets)
-{
-    Vector2 mousePos = GetMousePosition();
-
-    if (assets.mouseTexture.id > 0)
+    static void RegisterRandomMaps()
     {
-        float drawX = mousePos.x - assets.mouseTexture.width / 2 + 425;
-        float drawY = mousePos.y - assets.mouseTexture.height / 2 + 188;
-
-        DrawTextureEx(assets.mouseTexture, Vector2{ drawX, drawY }, 0.0f, 0.15f, WHITE);
-    }
-}
-
-void GameUpdate(GameAssets& assets)
-{
-    switch (currentScreen)
-    {
-    case TITLE:
-        UpdateTitle(assets);
-        break;
-    case CHOOSE_LEVEL:
-        UpdateChooseLevel(assets);
-        break;
-    case GAMEPLAY:
-        UpdateGameplay(assets);
-        break;
-    case GAMEOVER:
-        UpdateGameOver();
-        break;
-    }
-}
-
-void UpdateTitle(const GameAssets& assets)
-{
-    DrawTexture(assets.titleScreenTexture, 0, 0, WHITE);
-
-    const Rectangle levelsSelectionButton = { 1088, 736, 544, 189 };
-    Vector2 mouse = GetMousePosition();
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-    {
-        if (CheckCollisionPointRec(mouse, levelsSelectionButton))
+        g_randomMaps.clear();
+        // Map 01 (Index 0)
         {
-            currentScreen = CHOOSE_LEVEL;
+            RandomMapData m;
+            m.filePath = "Assets/RandomMaps/map01tdf.png";
+            m.pathPoints = {
+                {0.0f, 620.0f},{200.0f, 620.0f},{360.0f, 670.0f},{470.0f, 790.0f},{640.0f, 860.0f},
+                {1000.0f, 850.0f},{1137.0f, 780.0f},{1291.0f, 570.0f},{1396.0f, 475.0f},
+                {1520.0f, 455.0f}
+            };
+            m.castlePos = { 1670.0f, 470.0f };
+            g_randomMaps.push_back(std::move(m));
         }
-    }
-}
 
-void UpdateChooseLevel(const GameAssets& assets)
-{
-    DrawTexture(assets.levelSelectionTexture, 0, 0, WHITE);
-
-	const Rectangle level1Button = { 332, 332, 103, 103 };
-	Vector2 mouse = GetMousePosition();
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-    {
-        if (CheckCollisionPointRec(mouse, level1Button))
+        // Map 02 (Index 1)
         {
-            currentScreen = GAMEPLAY;
+            RandomMapData m;
+            m.filePath = "Assets/RandomMaps/map02tdf.png";
+            m.pathPoints = {
+                {165.0f, 85.0f},{167.0f, 881.0f},{541.0f, 881.0f},{532.0f, 98.0f},
+                {923.0f, 94.0f},{927.0f, 881.0f},{1295.0f, 881.0f},{1287.0f, 463.0f},
+                {1483.0f, 463.0f}
+            };
+            m.castlePos = { 1483.0f, 463.0f };
+            g_randomMaps.push_back(std::move(m));
         }
-    }
-}
 
-void UpdateGameplay(const GameAssets& assets)
-{
-    ClearBackground(DARKGRAY);
-
-    DrawRectangle(0, 0, 1920, 75, DARKGRAY);
-    DrawTexture(assets.castleTexture, 0, 0, WHITE);
-
-    GameDraw(assets);
-    DrawLifeBar(assets);
-
-    DrawText("1. CLIC: Placer tour (cree le chemin)", 10, 10, 20, WHITE);
-    DrawText("2. ESPACE: Spawn ennemi", 10, 35, 20, WHITE);
-
-    CastlePlacement();
-    TowersPlacement();
-
-	// manual spawn
-    if (IsKeyPressed(KEY_SPACE)) AddEnemy();
-
-	// auto spawn
-    if (pathLength > 0) {
-        spawnTimer += GetFrameTime();
-        if (spawnTimer > 2.0f) {
-            AddEnemy();
-            spawnTimer = 0;
+        // Map 03 (Index 2)
+        {
+            RandomMapData m;
+            m.filePath = "Assets/RandomMaps/Map03tdf.png";
+            m.pathPoints = {
+                {0.0f, 374.0f},{167.0f, 378.0f},{347.0f, 341.0f},{625.0f, 118.0f},{785.0f, 55.0f},
+                {982.0f, 55.0f},{1157.0f, 130.0f},{1260.0f, 264.0f},{1295.0f, 419.0f},
+                {1244.0f, 580.0f},{1101.0f, 640.0f},{945.0f, 645.0f},{643.0f, 463.0f},
+                {488.0f, 511.0f},{354.0f, 611.0f},{291.0f, 735.0f},{306.0f, 883.0f},
+                {433.0f, 972.0f},{606.0f, 974.0f},{770.0f, 926.0f},{938.0f, 890.0f},
+                {1301.0f, 883.0f},{1444.0f, 798.0f},{1563.0f, 688.0f},{1598.0f, 516.0f},
+                {1598.0f, 359.0f},{1591.0f, 203.0f}
+            };
+            m.castlePos = { 1591.0f, 203.0f };
+            g_randomMaps.push_back(std::move(m));
         }
     }
 
-    MoveEnemies();
-    // CastlesShoot();
-    TowerShoot();
-    MoveBullets();
-}
-
-void UpdateGameOver()
-{
-    // game over
-}
-
-void GameInit()
-{
-    srand(time(NULL));
-    castleCount = 0;
-    towerCount = 0;
-    enemyCount = 0;
-    bulletCount = 0;
-    spawnTimer = 0;
-    pathLength = 0;
-
-    currentDragState = NONE; // Reset drag
-
-    // Reset tableaux
-    for (int i = 0; i < MAX_CASTLES; i++) {
-        castle[i].exist = false;
-        castle[i].life = 0;
-        castle[i].maxLife = 0;
-    }
-    for (int i = 0; i < MAX_TOWERS; i++)
+    static void EnsureTextureLoaded(RandomMapData& m)
     {
-        towers[i].exist = false;
-        towerTypes[i] = NONE;
+        if (!m.loaded && !m.filePath.empty())
+        {
+            m.texture = LoadTexture(m.filePath.c_str());
+            m.loaded = (m.texture.id > 0);
+        }
     }
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        enemies[i].alive = false;
-        enemies[i].moving = false;
-        enemies[i].attackCooldown = 0.0f;
-        enemies[i].type = NORMAL;
-        enemies[i].health = 0;
-        enemies[i].maxLife = 0;
-        enemies[i].damage = 0;
-        enemies[i].nextPoint = 0;
+
+    static int GetRandomMapIndex(bool avoidCurrent)
+    {
+        if (g_randomMaps.empty()) return -1;
+        if (g_randomMaps.size() == 1) return 0;
+
+        int next = GetRandomValue(0, g_randomMaps.size() - 1);
+
+        if (avoidCurrent) {
+            int attempts = 0;
+            while (next == g_currentRandomMapIndex && attempts < 12)
+            {
+                next = GetRandomValue(0, g_randomMaps.size() - 1);
+                ++attempts;
+            }
+        }
+        return next;
     }
-    for (int i = 0; i < MAX_BULLETS; i++) bullets[i].active = false;
+}
+
+void Game::LoadMapForLevel(CurrentLevel level)
+{
+    int mapIndex = -1;
+
+    if (g_randomMaps.empty())
+    {
+        RegisterRandomMaps();
+    }
+
+    switch (level)
+    {
+    case CurrentLevel::LEVEL1: mapIndex = 1; break;
+    case CurrentLevel::LEVEL2: mapIndex = 0; break;
+    case CurrentLevel::LEVEL3: mapIndex = 2; break;
+    case CurrentLevel::LEVEL4: mapIndex = 1; break;
+    case CurrentLevel::LEVEL5: mapIndex = 0; break;
+    case CurrentLevel::LEVEL7: mapIndex = 2; break;
+    case CurrentLevel::LEVEL8: mapIndex = 1; break;
+    case CurrentLevel::LEVEL9: mapIndex = 0; break;
+    case CurrentLevel::LEVEL10: mapIndex = 2; break;
+    case CurrentLevel::LEVEL11: mapIndex = 1; break;
+    case CurrentLevel::LEVEL12: mapIndex = 0; break;
+    case CurrentLevel::LEVEL13: mapIndex = 2; break;
+    case CurrentLevel::LEVEL14: mapIndex = 1; break;
+    case CurrentLevel::LEVEL15: mapIndex = 0; break;
+
+    case CurrentLevel::INFINITE:
+        mapIndex = GetRandomMapIndex(true);
+        break;
+
+    default:
+        mapIndex = g_randomMaps.empty() ? -1 : 0;
+        break;
+    }
+
+    if (mapIndex >= 0 && mapIndex < g_randomMaps.size())
+    {
+        g_currentRandomMapIndex = mapIndex;
+
+        RandomMapData& activeMap = g_randomMaps[g_currentRandomMapIndex];
+
+        EnsureTextureLoaded(activeMap);
+
+        this->spawnPoint = activeMap.pathPoints.front();
+        this->castlePosition = activeMap.castlePos;
+
+        CreatePath(this->castlePosition);
+    }
+    else
+    {
+        cout << "ERROR: Could not load map for level " << (int)level << endl;
+    }
+}
+
+Game::Game() :
+    previousScreen(CurrentScreen::LOADING),
+    currentScreen(CurrentScreen::TITLE),
+    currentLevel(CurrentLevel::NONE),
+    assets(),
+    money(300),
+    spawnTimer(0.0f),
+    spawnPoint{ 0.0f, 0.0f },
+    castlePosition{ 0.0f, 0.0f },
+    currentDragState(TowerType::NONE),
+    shopArcherRect{ 1410, 1030, 130, 130 },
+    shopWizardRect{ 1580, 1030, 130, 130 },
+    shopCatapultRect{ 1750, 1030, 130, 130 },
+    currentWave(0),
+    waveSpawnTimer(0.0f),
+    timeBetweenSpawns(0.8f),
+    timeBetweenWaves(5.0f),
+    waveCooldownTimer(0.0f),
+    isWaveActive(false),
+    enemiesSpawnedThisWave(0),
+    totalEnemiesInWave(0),
+    waveAnnouncementTimer(0.0f),
+    currentWaveHealthMultiplier(1.0f),
+    currentWaveSpeedMultiplier(1.0f)
+{
+    LoadGame();
+}
+
+Game::~Game()
+{
+    assets.UnloadGameAssets();
+}
+
+
+
+void Game::SaveGameData()
+{
+    GameData data = {
+        masterVolume,
+        musicVolume,
+        sfxVolume,
+        maxUnlockedLevel,
+        bestWave
+    };
+
+    SaveFileData(SAVE_FILE_NAME, &data, sizeof(GameData));
+}
+
+void Game::LoadGameData()
+{
+    GameData data = {};
+    int bytesRead = 0;
+
+    unsigned char* fileData = LoadFileData(SAVE_FILE_NAME, &bytesRead);
+
+    if (fileData != NULL && bytesRead == sizeof(GameData))
+    {
+        data = *(GameData*)fileData;
+
+        masterVolume = data.masterVolume;
+        musicVolume = data.musicVolume;
+        sfxVolume = data.sfxVolume;
+        maxUnlockedLevel = data.maxUnlockedLevel;
+        bestWave = data.bestWave;
+    }
+    else
+    {
+        masterVolume = 75;
+        musicVolume = 75;
+        sfxVolume = 75;
+        maxUnlockedLevel = 0;
+        bestWave = 0;
+
+        SaveGameData();
+    }
+
+    if (fileData != NULL) UnloadFileData(fileData);
+}
+void Game::SaveGame()
+{
+    std::ofstream outFile("save.txt");
+
+    if (outFile.is_open())
+    {
+        outFile << maxUnlockedLevel << std::endl;
+        outFile << bestWave << std::endl;
+
+        outFile << masterVolume << std::endl;
+        outFile << musicVolume << std::endl;
+        outFile << sfxVolume << std::endl;
+
+        outFile << lifeBarButton << std::endl;
+        outFile << damageNumberButton << std::endl;
+        outFile << highlightPathButton << std::endl;
+        outFile << buildPauseButton << std::endl;
+
+        outFile.close();
+    }
+}
+
+
+void Game::LoadGame()
+{
+    std::ifstream inFile("save.txt");
+
+    if (inFile.is_open())
+    {
+        int savedLvl, savedWave;
+        int savedMasterVol, savedMusicVol, savedSfxVol;
+        bool savedLifeBar, savedDamageNum, savedHighlight, savedBuildPause;
+
+        if (!(inFile >> savedLvl)) return;
+        if (!(inFile >> savedWave)) return;
+
+        if (!(inFile >> savedMasterVol)) return;
+        if (!(inFile >> savedMusicVol)) return;
+        if (!(inFile >> savedSfxVol)) return;
+
+        if (!(inFile >> savedLifeBar)) return;
+        if (!(inFile >> savedDamageNum)) return;
+        if (!(inFile >> savedHighlight)) return;
+        if (!(inFile >> savedBuildPause)) return;
+
+
+        this->maxUnlockedLevel = savedLvl;
+        this->bestWave = savedWave;
+        this->masterVolume = savedMasterVol;
+        this->musicVolume = savedMusicVol;
+        this->sfxVolume = savedSfxVol;
+        this->lifeBarButton = savedLifeBar;
+        this->damageNumberButton = savedDamageNum;
+        this->highlightPathButton = savedHighlight;
+        this->buildPauseButton = savedBuildPause;
+
+        inFile.close();
+
+        ApplySettings();
+        ApplyMasterVolume((float)masterVolume / 100.0f);
+        ApplyMusicVolume((float)musicVolume / 100.0f);
+        ApplySfxVolume((float)sfxVolume / 100.0f);
+    }
+ 
+    else
+    {
+        ApplySettings();
+        ApplyMasterVolume((float)masterVolume / 100.0f);
+        ApplyMusicVolume((float)musicVolume / 100.0f);
+        ApplySfxVolume((float)sfxVolume / 100.0f);
+    }
+
+}
+
+void Game::Init()
+{
+    LoadGame();
+    srand((unsigned int)time(NULL));
+    assets.LoadGameAssets();
+
+    RegisterRandomMaps();
+
+    towers.clear();
+    enemies.clear();
+    bullets.clear();
+    path.clear();
+
+    money = 300;
+
+    spawnTimer = 0.0f;
+    currentDragState = TowerType::NONE;
+    currentScreen = CurrentScreen::TITLE;
+
+    LoadMapForLevel(CurrentLevel::LEVEL1);
+
+    mainCastle = Castle();
 
     cout << "GAME START" << endl;
 }
 
-void CreatePath(Vector2 castlePos)
+void Game::CreatePath(Vector2 castlePosition)
 {
-    pathLength = 0;
-    path[pathLength++] = spawnPoint;
-    Vector2 current = spawnPoint;
-    Vector2 target = castlePos;
-    int numPoints = 3 + (rand() % 3);
+    path.clear();
 
-    for (int i = 0; i < numPoints; i++) {
-        float t = (float)(i + 1) / (float)(numPoints + 1);
-        float baseX = current.x + (target.x - current.x) * t;
-        float baseY = current.y + (target.y - current.y) * t;
-        float randomX = (float)((rand() % 400) - 200);
-        float randomY = (float)((rand() % 400) - 200);
-
-        Vector2 newPoint = { baseX + randomX, baseY + randomY };
-
-        if (newPoint.x < 50) newPoint.x = 50;
-        if (newPoint.x > 1700) newPoint.x = 1700;
-        if (newPoint.y < 100) newPoint.y = 100;
-        if (newPoint.y > 1100) newPoint.y = 1100;
-
-        path[pathLength++] = newPoint;
-    }
-    path[pathLength++] = castlePos;
-}
-
-void CastlePlacement()
-{
-    Vector2 mouse = GetMousePosition();
-	// castle placement (only 1st click)
-    if (!castle[0].exist && IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+    if (g_currentRandomMapIndex < 0 || g_currentRandomMapIndex >= g_randomMaps.size())
     {
-        if (mouse.x < 1750 && mouse.y > 100) AddCastle(mouse);
+        cout << "ERROR: Cannot create path, no map loaded." << endl;
         return;
     }
-}
 
+    const float PATH_POINT_RADIUS = g_pathPointRadius;
 
-void TowersPlacement()
-{
-    Vector2 mouse = GetMousePosition();
+    const std::vector<Vector2>& mapPoints = g_randomMaps[g_currentRandomMapIndex].pathPoints;
 
-    // Drag and Drop
-    if (castle[0].exist)
+    path.reserve(mapPoints.size());
+    for (const auto& pos : mapPoints)
     {
-        // Drag
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && currentDragState == NONE)
-        {
-            if (CheckCollisionPointRec(mouse, shopArcherRect)) {
-                currentDragState = ARCHER;
-            }
-            else if (CheckCollisionPointRec(mouse, shopWizardRect)) {
-                currentDragState = WIZARD;
-            }
-            else if (CheckCollisionPointRec(mouse, shopCatapultRect)) {
-                currentDragState = CATAPULT;
-            }
-        }
-
-        // Drop
-        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && currentDragState != NONE)
-        {
-			// Verified drop zone
-            if (mouse.y < 1000 && mouse.x < 1800 && mouse.y > 100)
-            {
-                switch (currentDragState)
-                {
-                case ARCHER: AddArcherTower(mouse); break;
-                case WIZARD: AddWizardTower(mouse); break;
-                case CATAPULT: AddCatapultTower(mouse); break;
-                default: break;
-                }
-            }
-			// Reinitialize drag state
-            currentDragState = NONE;
-        }
+        path.push_back(PathPoint{ pos, PATH_POINT_RADIUS });
     }
 }
 
-void AddCastle(Vector2 mousePos)
+bool Game::BuyTower(Vector2 mousePos, TowerType type, int cost)
 {
-    if (castleCount >= MAX_CASTLES) return;
-    castle[castleCount].pos = mousePos;
-    castle[castleCount].exist = true;
-	castle[castleCount].life = 100;
-	castle[castleCount].maxLife = 100;
-    castleCount++;
-    CreatePath(mousePos);
-}
-
-void AddArcherTower(Vector2 mousePos)
-{
-    if (towerCount >= MAX_TOWERS) return;
-    towers[towerCount].pos = mousePos;
-    towers[towerCount].exist = true;
-    towers[towerCount].range = 250;
-    towerTypes[towerCount] = ARCHER;
-	bullets[bulletCount].type = ARCHER;
-    towerCount++;
-}
-
-void AddWizardTower(Vector2 mousePos)
-{
-    if (towerCount >= MAX_TOWERS) return;
-    towers[towerCount].pos = mousePos;
-    towers[towerCount].exist = true;
-    towers[towerCount].range = 200;
-    towerTypes[towerCount] = WIZARD;
-    bullets[bulletCount].type = WIZARD;
-    towerCount++;
-}
-
-void AddCatapultTower(Vector2 mousePos)
-{
-    if (towerCount >= MAX_TOWERS) return;
-    towers[towerCount].pos = mousePos;
-    towers[towerCount].exist = true;
-    towers[towerCount].range = 300;
-    towerTypes[towerCount] = CATAPULT;
-    bullets[bulletCount].type = CATAPULT;
-    towerCount++;
-}
-
-
-void AddEnemy() {
-    if (enemyCount >= MAX_ENEMIES || pathLength == 0) return;
+    if (money < cost) {
+        return false;
+    }
+    if (towers.size() >= 10) return false;
     
-    enemies[enemyCount].pos = path[0];
-
-    // Définir le type au spawn (ici aléatoire entre NORMAL, FAST, TANK)
-    int r = GetRandomValue(1, 3);
-    if (r == 1) enemies[enemyCount].type = NORMAL;
-    else if (r == 2) enemies[enemyCount].type = FAST;
-    else enemies[enemyCount].type = TANK;
-
-    // Initialiser la santé et degats selon le type assigné
-    switch (enemies[enemyCount].type)
-    {
-    case NORMAL:
-        enemies[enemyCount].health = 100;
-        enemies[enemyCount].maxLife = 100;
-		enemies[enemyCount].damage = 50;
-        break;
-    case FAST:
-        enemies[enemyCount].health = 70;
-        enemies[enemyCount].maxLife = 70;
-        enemies[enemyCount].damage = 25;
-        break;
-    case TANK:
-        enemies[enemyCount].health = 200;
-		enemies[enemyCount].maxLife = 200;
-        enemies[enemyCount].damage = 100;
-        break;
-    default:
-        enemies[enemyCount].health = 100;
-		enemies[enemyCount].maxLife = 100;
-        break;
+    if (IsPositionOnPath(mousePos)) {
+        return false;
     }
 
-    enemies[enemyCount].nextPoint = 1;
-    enemies[enemyCount].alive = true;
-	enemies[enemyCount].moving = true;
-    enemies[enemyCount].attackCooldown = 0.0f;
+    money -= cost;
 
-    enemyCount++;
+    towers.emplace_back(mousePos, type);
+    return true;
+}
+
+void Game::AddTower(Vector2 mousePos, TowerType type)
+{
+    if (towers.size() >= 10) return;
+    towers.emplace_back(mousePos, type);
+}
+
+void Game::AddEnemy(EnemyType t, float healthMultiplier, float speedMultiplier, bool spawnBehindLastEnemy)
+{
+    Vector2 finalSpawnPosition = spawnPoint;
+
+    if (spawnBehindLastEnemy && !enemies.empty())
+    {
+        const auto& lastSpawned = enemies.back();
+        Vector2 lastPos = lastSpawned->GetPosition();
+
+        if (path.size() > 1)
+        {
+            float dx = path[1].position.x - path[0].position.x;
+            float dy = path[1].position.y - path[0].position.y;
+            float magnitude = sqrtf(dx * dx + dy * dy);
+
+            if (magnitude > 0.0f)
+            {
+                float dir_x = dx / magnitude;
+                float dir_y = dy / magnitude;
+
+                float offsetDistance = 30.0f;
+
+                finalSpawnPosition.x = lastPos.x - dir_x * offsetDistance;
+                finalSpawnPosition.y = lastPos.y - dir_y * offsetDistance;
+            }
+        }
+    }
+
+    auto newEnemy = CreateEnemy(t, finalSpawnPosition, *this, healthMultiplier, speedMultiplier);
+
+    if (path.size() > 1)
+    {
+        newEnemy->InitializeTarget(path[1].position, path[1].radius);
+    }
+
+    enemies.push_back(std::move(newEnemy));
+}
+
+void Game::AddLevelEnemy(EnemyType t)
+{
+    std::unique_ptr<Enemy> newEnemyPtr = CreateEnemy(t, spawnPoint, *this, 1.0f, 1.0f);
+
+    if (!newEnemyPtr) return;
+
+    if (path.size() > 1)
+    {
+        newEnemyPtr->InitializeTarget(path[1].position, path[1].radius);
+    }
+
+    enemies.push_back(std::move(newEnemyPtr));
+}
+
+void Game::SetupLevel(CurrentLevel levelId)
+{
+    mainCastle.ResetLife();
+    enemies.clear();
+    bullets.clear();
+    towers.clear();
+    money = 500;
+
+    LoadMapForLevel(levelId);
+
+    mainCastle.Init(castlePosition, 1500);
+
+    if (path.empty())
+    {
+        std::cerr << "Erreur fatale: Le chemin pour le niveau " << static_cast<int>(levelId) << " est vide." << std::endl;
+        currentLevelData = nullptr;
+        currentLevel = CurrentLevel::NONE;
+        return;
+    }
+
+    currentLevel = levelId;
+
+
+    if (levelId == CurrentLevel::INFINITE)
+    {
+        currentLevelData = nullptr;
+
+        currentWave = 0;
+        waveSpawnTimer = 0.0f;
+        waveCooldownTimer = 0.0f;
+        isWaveActive = false;
+        enemiesSpawnedThisWave = 0;
+        totalEnemiesInWave = 0;
+        waveAnnouncementTimer = 0.0f;
+        currentWaveHealthMultiplier = 1.0f;
+        currentWaveSpeedMultiplier = 1.0f;
+        waveSystem.ResetWaveCounts();
+
+        waveCooldownTimer = 3.0f;
+        std::cout << "Mode Infini lanc." << std::endl;
+    }
+    else
+    {
+        spawnTimer = 0.0f;
+        currentWaveIndex = 0;
+        enemiesSpawned = 0;
+        waveTimer = 0.0f;
+
+        try
+        {
+            const LevelData& data = level.GetLevelData(levelId);
+            currentLevelData = &data;
+            cout << "Level " << static_cast<int>(levelId) << " data loaded successfully." << std::endl;
+        }
+        catch (const std::runtime_error& e) {
+            std::cerr << "Erreur de chargement des donnÃ©es de niveau: " << e.what() << std::endl;
+            currentLevelData = nullptr;
+            currentLevel = CurrentLevel::NONE;
+            return;
+        }
+    }
+
+    SetScreen(CurrentScreen::GAMEPLAY);
+}
+
+void Game::ClearDeadEntities()
+{
+    bullets.erase(std::remove_if(bullets.begin(), bullets.end(),
+        [](const Bullet& b) { return !b.IsActive(); }), bullets.end());
+
+    enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
+        [](const std::unique_ptr<Enemy>& e) { return !e->IsAlive(); }), enemies.end());
+}
+
+bool Game::IsPositionOnPath(Vector2 position) const
+{
+    const float PATH_PROTECTION_RADIUS = 120.0f;
+    
+    for (const auto& pathPoint : path)
+    {
+        if (CheckCollisionPointCircle(position, pathPoint.position, PATH_PROTECTION_RADIUS))
+        {
+            return true;
+        }
+    }
+    
+    for (size_t i = 0; i < path.size() - 1; i++)
+    {
+        Vector2 p1 = path[i].position;
+        Vector2 p2 = path[i + 1].position;
+        
+        if (CheckCollisionPointLine(position, p1, p2, (int)PATH_PROTECTION_RADIUS))
+        {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+void Game::Update(float dt)
+{
+    if (IsKeyPressed(KEY_F)) ToggleFullscreen();
+
+    switch (currentScreen)
+    {
+    case CurrentScreen::TITLE: UpdateTitle(); break;
+    case CurrentScreen::CHOOSE_LEVEL: UpdateChooseLevel(); break;
+    case CurrentScreen::SETTINGS: UpdateSettings(); break;
+    case CurrentScreen::HELP: UpdateHelp(); break;
+    case CurrentScreen::GAMEPLAY: UpdateGameplay(dt); break;
+    case CurrentScreen::VICTORY: UpdateVictory(); break;
+    case CurrentScreen::GAMEOVER: UpdateGameOver(); break;
+    }
+}
+
+void Game::SetScreen(CurrentScreen newScreen)
+{
+    previousScreen = currentScreen;
+    currentScreen = newScreen;
+
+
+    if (previousScreen == CurrentScreen::TITLE)
+    {
+        firstFrameTitleMusic = false;
+    }
+
+    if (previousScreen == CurrentScreen::GAMEPLAY)
+    {
+        StopMusicStream(assets.GetLevelMusic());
+        StopMusicStream(assets.GetInfiniteMusic());
+        StopMusicStream(assets.GetBossMusic());
+
+        isBossWaveActive = false;
+        firstFrameGameplayMusic = false;
+    }
+
+    if (previousScreen == CurrentScreen::VICTORY)
+    {
+        StopMusicStream(assets.GetVictoryMusic());
+        firstFrameVictoryMusic = false;
+    }
+
+    if (previousScreen == CurrentScreen::GAMEOVER)
+    {
+        StopMusicStream(assets.GetGameOverMusic());
+        firstFrameGameOverMusic = false;
+    }
+
+    if (currentScreen == CurrentScreen::TITLE)
+    {
+        firstFrameTitleMusic = true;
+    }
+
+    if (currentScreen == CurrentScreen::GAMEPLAY)
+    {
+        StopMusicStream(assets.GetTitleMusic());
+
+        firstFrameGameplayMusic = true;
+    }
+
+    if (currentScreen == CurrentScreen::VICTORY)
+    {
+        firstFrameVictoryMusic = true;
+    }
+
+    if (currentScreen == CurrentScreen::GAMEOVER)
+    {
+        firstFrameGameOverMusic = true;
+    }
+}
+
+void Game::PlayTitleAudio()
+{
+
+    Music titleMusic = assets.GetTitleMusic(); 
+
+    if (firstFrameTitleMusic)
+    {
+        StopMusicStream(assets.GetVictoryMusic());
+        StopMusicStream(assets.GetGameOverMusic());
+
+        titleMusic.looping = true;
+        PlayMusicStream(titleMusic);
+
+        firstFrameTitleMusic = false;
+    }
+
+    UpdateMusicStream(titleMusic);
 
 }
 
-void MoveEnemies()
+void Game::PlayGameplayAudio()
 {
-    for (int i = 0; i < MAX_ENEMIES; i++)
+    if (currentLevel == CurrentLevel::INFINITE)
     {
-        if (!enemies[i].alive) continue;
+        Music music = assets.GetInfiniteMusic();
 
-        // If enemy reached the final point, stop moving (will attack castle)
-        if (enemies[i].nextPoint >= pathLength)
+        if (isBossWaveActive)
         {
-            enemies[i].moving = false;
-            continue;
+            StopMusicStream(assets.GetBossMusic());
+            isBossWaveActive = false;
+            firstFrameGameplayMusic = true;
         }
 
-        // Move along path
-        Vector2 target = path[enemies[i].nextPoint];
-        float dx = target.x - enemies[i].pos.x;
-        float dy = target.y - enemies[i].pos.y;
-        float dist = sqrt(dx * dx + dy * dy);
-        if (dist < 10)
+        if (firstFrameGameplayMusic)
         {
-            enemies[i].nextPoint++;
-            // if nextPoint now equals pathLength, enemy will stop next frame and attack
-            if (enemies[i].nextPoint >= pathLength) enemies[i].moving = false;
+            music.looping = true;
+            PlayMusicStream(music);
+            SetMusicVolume(music, 0.3);
+            firstFrameGameplayMusic = false;
+        }
+        UpdateMusicStream(music);
+    }
+    else
+    {
+        if (isBossWaveActive)
+        {
+           
+
+            if (firstFrameGameplayMusic)
+            {
+                StopMusicStream(assets.GetLevelMusic());
+
+                Music bossMusic = assets.GetBossMusic();
+                bossMusic.looping = true;
+                PlayMusicStream(bossMusic);
+
+                firstFrameGameplayMusic = false;
+            }
+            UpdateMusicStream(assets.GetBossMusic());
         }
         else
         {
-            // Utiliser le type stocké dans l'ennemi pour définir sa vitesse
-            float speedMultiplier = 1.0f;
-            switch (enemies[i].type)
-            {
-            case NORMAL:
-                speedMultiplier = 2.0f;
-                break;
-            case FAST:
-                speedMultiplier = 4.0f;
-                break;
-            case TANK:
-                speedMultiplier = 1.25f;
-                break;
-            default:
-                speedMultiplier = 2.0f;
-                break;
+
+            Music music = assets.GetLevelMusic();
+
+            if (!firstFrameGameplayMusic) {
+                StopMusicStream(assets.GetBossMusic());
             }
 
-            enemies[i].pos.x += (dx / dist) * speedMultiplier;
-            enemies[i].pos.y += (dy / dist) * speedMultiplier;
-            enemies[i].moving = true;
-        }
-    }
-}
-void EnemiesAttack()
-{
-    if (!castle[0].exist) return;
+            if (firstFrameGameplayMusic)
+            {
+                StopMusicStream(assets.GetInfiniteMusic());
 
-    for (int i = 0; i < MAX_ENEMIES; i++)
-    {
-        if (!enemies[i].alive) continue;
-
-        // If enemy still moving, skip attack logic for this enemy
-        if (enemies[i].moving) continue;
-
-        // Enemy reached castle (or stopped): handle attack cooldown & damage
-        switch (enemies[i].type)
-        {
-        case NORMAL:
-            enemies[i].attackCooldown += GetFrameTime();
-            if (enemies[i].attackCooldown >= 1.0f)
-            {
-                castle[0].life -= enemies[i].damage;
-                enemies[i].attackCooldown = 0.0f;
+                music.looping = true;
+                PlayMusicStream(music);
+                firstFrameGameplayMusic = false;
             }
-            break;
-        case FAST:
-            enemies[i].attackCooldown += GetFrameTime();
-            if (enemies[i].attackCooldown >= 0.5f)
-            {
-                castle[0].life -= enemies[i].damage;
-                enemies[i].attackCooldown = 0.0f;
-            }
-            break;
-        case TANK:
-            enemies[i].attackCooldown += GetFrameTime();
-            if (enemies[i].attackCooldown >= 2.0f)
-            {
-                castle[0].life -= enemies[i].damage;
-                enemies[i].attackCooldown = 0.0f;
-            }
-            break;
-        default:
-            enemies[i].attackCooldown += GetFrameTime();
-            if (enemies[i].attackCooldown >= 1.0f)
-            {
-                castle[0].life -= enemies[i].damage;
-                enemies[i].attackCooldown = 0.0f;
-            }
-            break;
+            UpdateMusicStream(music);
         }
     }
 }
 
-void ShootBullet(Vector2 from, Vector2 to, TowerType type)
+void Game::PlayVictoryAudio()
 {
-    if (bulletCount >= MAX_BULLETS) return;
-    float dx = to.x - from.x; float dy = to.y - from.y; float dist = sqrt(dx * dx + dy * dy);
-    bullets[bulletCount].pos = from;
-    bullets[bulletCount].speed = { (dx / dist) * 8.0f, (dy / dist) * 8.0f };
-    bullets[bulletCount].active = true;
-    bullets[bulletCount].type = type;
-    bulletCount++;
-}
-/*
-void CastlesShoot() {
-    static float cooldown[MAX_CASTLES] = { 0 };
-    for (int t = 0; t < MAX_CASTLES; t++)
+    Music music = assets.GetVictoryMusic();
+
+    if (firstFrameVictoryMusic)
     {
-        if (!castle[t].exist) continue;
-        cooldown[t] += GetFrameTime();
+        StopMusicStream(assets.GetLevelMusic());
+        StopMusicStream(assets.GetBossMusic());
 
-        if (cooldown[t] < 0.8f) continue;
-        for (int e = 0; e < MAX_ENEMIES; e++)
-        {
-            if (!enemies[e].alive) continue;
+        music.looping = true;
+        PlayMusicStream(music);
 
-            if (CheckCollisionCircles(enemies[e].pos, 30, castle[t].pos, 325))
-            {
-                ShootBullet(castle[t].pos, enemies[e].pos);
-                cooldown[t] = 0;
-                break;
-            }
-        }
+        firstFrameVictoryMusic = false;
+    }
+
+    UpdateMusicStream(music);
+}
+
+void Game::PlayGameOverAudio()
+{
+    Music music = assets.GetGameOverMusic();
+
+    if (firstFrameGameOverMusic)
+    {
+        StopMusicStream(assets.GetLevelMusic());
+        StopMusicStream(assets.GetInfiniteMusic());
+        StopMusicStream(assets.GetBossMusic());
+
+        music.looping = true;
+        PlayMusicStream(music);
+        SetMusicVolume(music, 2);
+        firstFrameGameOverMusic = false;
+    }
+
+    UpdateMusicStream(music);
+}
+
+void Game::UpdateTitle()
+{
+    const Rectangle levelsSelectionButton = { 1088, 736, 544, 189 };
+    const Rectangle settingsButton = { 384, 416, 352, 128 };
+    const Rectangle helpButton = { 1184, 416, 352, 128 };
+
+    const Rectangle infiniteLevelRect = { 288, 736, 544, 189 };
+
+    Vector2 origin{ 0, 0 };
+
+    Vector2 mouse = GetMousePosition();
+
+    PlayTitleAudio();
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, levelsSelectionButton))
+    {
+        SetScreen(CurrentScreen::CHOOSE_LEVEL);
+        PlaySound(assets.GetClickSound());
+    }
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, settingsButton))
+    {
+        SetScreen(CurrentScreen::SETTINGS);
+        PlaySound(assets.GetClickSound());
+
+    }
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, helpButton))
+    {
+        SetScreen(CurrentScreen::HELP);
+        PlaySound(assets.GetClickSound());
+
+    }
+
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, infiniteLevelRect))
+    {
+
+        currentLevel = CurrentLevel::INFINITE;
+
+        SetupLevel(currentLevel);
+        PlaySound(assets.GetClickLevel());
+
+        currentScreen = CurrentScreen::GAMEPLAY;
     }
 }
-*/
-void TowerShoot()
+
+void Game::UpdateChooseLevel()
 {
-    static float cooldown[MAX_TOWERS] = { 0 };
-    for (int t = 0; t < MAX_TOWERS; t++)
+
+    const float BUTTON_SIZE = 103.0f;
+
+    const float X_SPACING = 288.0f;
+    const float Y_SPACING = 288.0f;
+
+    const Vector2 START_POS = { 332.0f, 332.0f };
+
+    Rectangle levelButtons[15];
+
+    for (int i = 0; i < 15; ++i)
     {
-        if (!towers[t].exist) continue;
-        cooldown[t] += GetFrameTime();
+        int col = i % 5;
+        int row = i / 5;
 
-        // cooldown
-        if (towerTypes[t] == ARCHER)
-        {
-            if (cooldown[t] < 0.5f) continue;
-        }
-
-        if (towerTypes[t] == WIZARD)
-        {
-            if (cooldown[t] < 1.5f) continue;
-        }
-
-        if (towerTypes[t] == CATAPULT)
-        {
-            if (cooldown[t] < 3.0f) continue;
-        }
-
-        for (int e = 0; e < MAX_ENEMIES; e++)
-        {
-            if (!enemies[e].alive) continue;
-            if (CheckCollisionCircles(enemies[e].pos, 30, towers[t].pos, towers[t].range))
-            {
-                ShootBullet(towers[t].pos, enemies[e].pos, towerTypes[t]);
-                cooldown[t] = 0;
-                break;
-            }
-        }
+        levelButtons[i].x = START_POS.x + (float)col * X_SPACING;
+        levelButtons[i].y = START_POS.y + (float)row * Y_SPACING;
+        levelButtons[i].width = BUTTON_SIZE;
+        levelButtons[i].height = BUTTON_SIZE;
     }
-}
 
-void MoveBullets()
-{
-    for (int i = 0; i < MAX_BULLETS; i++)
+    Vector2 mouse = GetMousePosition();
+    PlayTitleAudio();
+
+    Vector2 returnTitleCenter = { 1692 + 128 / 2.0f, 972 + 128 / 2.0f };
+    float returnTitleRadius = 128 / 2.0f;
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointCircle(mouse, returnTitleCenter, returnTitleRadius))
     {
-        if (!bullets[i].active) continue;
+        currentScreen = CurrentScreen::TITLE;
+        PlaySound(assets.GetClickSound());
 
-		// bullet movement
-        bullets[i].pos.x += bullets[i].speed.x;
-        bullets[i].pos.y += bullets[i].speed.y;
-
-		// left screen
-        if (bullets[i].pos.x < 0 || bullets[i].pos.x > 1920 || bullets[i].pos.y < 0)
+    }
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+    {
+        for (int i = 0; i < 15; ++i)
         {
-            bullets[i].active = false;
-            continue;
-        }
+            int levelNum = i + 1;
 
-		// collision with enemies
-        for (int e = 0; e < MAX_ENEMIES; e++)
-        {
-			// Only check alive enemies
-            if (enemies[e].alive && CheckCollisionCircles(bullets[i].pos, 10, enemies[e].pos, 30))
+            if (!IsLevelLocked(levelNum))
             {
-				// Different behavior based on bullet type
-                if (bullets[i].type == ARCHER)
+                if (CheckCollisionPointRec(mouse, levelButtons[i]))
                 {
-                    // 1 hit
-                    enemies[e].health -= 20;
-                    if (enemies[e].health <= 0) enemies[e].alive = false;
+                    CurrentLevel selectedLevel = (CurrentLevel)levelNum;
+                    currentLevel = selectedLevel;
+                    SetupLevel(selectedLevel);
+                    PlaySound(assets.GetClickLevel());
+                    currentScreen = CurrentScreen::GAMEPLAY;
+                    break;
                 }
-                else if (bullets[i].type == WIZARD || bullets[i].type == CATAPULT)
+            }
+            else
+            {
+                if (CheckCollisionPointRec(mouse, levelButtons[i]))
                 {
-					// Zone damage
-                    float explosionRadius = 0;
-                    int damageAmount = 0;
+                    PlaySound(assets.GetLockedLevel());
+                    SetSoundVolume(assets.GetLockedLevel(), 4.0f);
+                }
+            }
+        }
+    }
+}
 
-                    if (bullets[i].type == WIZARD) {
-                        explosionRadius = 35.0f; // Radius
-                        damageAmount = 60;      // Damage
+void Game::UpdateSettings()
+{
+    PlayTitleAudio();
+    Vector2 mouse = GetMousePosition();
+
+    bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+
+    const Rectangle lifeBarButtonRect = { 244, 345, 407, 140 };
+    const Rectangle damageNumberButtonRect = { 244, 580, 407, 140 };
+    const Rectangle highlightPathButtonRect = { 756, 345, 407, 140 };
+    const Rectangle buildPauseButtonRect = { 756, 580, 407, 140 };
+    const Rectangle volumeButtonRect = { 1269, 332, 407, 140 };
+    const Rectangle resetButtonRect = { 1269, 580, 407, 140 };
+    const Rectangle creditsButtonRect = { 756, 815, 407, 140 };
+
+    Vector2 returnTitleCenter = { 1692 + 128 / 2.0f, 972 + 128 / 2.0f };
+    float returnTitleRadius = 128 / 2.0f;
+
+    Vector2 returnSettingsCenter = { 1366 + 64 / 2.0f, 319 + 64 / 2.0f };
+    float returnSettingsRadius = 64 / 2.0f;
+
+    if (volumeButton)
+    {
+        UpdateVolumeOptions();
+
+        if (mouseClicked &&
+            CheckCollisionPointCircle(mouse, returnSettingsCenter, returnSettingsRadius))
+        {
+            volumeButton = false;
+            PlaySound(assets.GetClickSound());
+        }
+        return;
+    }
+
+    if (resetButton)
+    {
+        Rectangle yesRect{ 608, 602, 257, 92 };
+        Rectangle noRect{ 1055, 602, 257, 92 };
+
+
+        if (mouseClicked)
+        {
+
+            if (mouseClicked &&
+                CheckCollisionPointCircle(mouse, returnSettingsCenter, returnSettingsRadius))
+            {
+                volumeButton = false;
+                PlaySound(assets.GetClickSound());
+            }
+            return;
+
+            if (CheckCollisionPointRec(mouse, noRect))
+            {
+                resetButton = false;
+                PlaySound(assets.GetClickSound());
+                return; 
+            }
+
+            if (CheckCollisionPointRec(mouse, yesRect))
+            {
+                masterVolume = 75;
+                musicVolume = 75;
+                sfxVolume = 75;
+                maxUnlockedLevel = 1;
+                bestWave = 0;
+                lifeBarButton = true;
+                damageNumberButton = true;
+                highlightPathButton = false;
+                buildPauseButton = false;
+                ApplyMasterVolume(0.75f);
+                ApplyMusicVolume(0.75f);
+                ApplySfxVolume(0.75f);
+
+                ApplySettings();
+                SaveGame();
+                PlaySound(assets.GetResetSound());
+                resetButton = false;
+                return;
+            }
+        }
+
+        return;
+    }
+
+    if (creditsButton)
+    {
+        if (mouseClicked &&
+            CheckCollisionPointCircle(mouse, returnSettingsCenter, returnSettingsRadius))
+        {
+            creditsButton = false;
+            PlaySound(assets.GetClickSound());
+        }
+
+
+        return;
+    }
+
+
+    if (mouseClicked)
+    {
+        if (CheckCollisionPointCircle(mouse, returnTitleCenter, returnTitleRadius))
+        {
+            SetScreen(CurrentScreen::TITLE);
+            PlaySound(assets.GetClickSound());
+        }
+
+        else if (CheckCollisionPointRec(mouse, lifeBarButtonRect))
+        {
+            lifeBarButton = !lifeBarButton;
+            PlaySound(assets.GetClickSound());
+        }
+
+        else if (CheckCollisionPointRec(mouse, damageNumberButtonRect))
+        {
+            damageNumberButton = !damageNumberButton;
+            PlaySound(assets.GetClickSound());
+        }
+
+        else if (CheckCollisionPointRec(mouse, highlightPathButtonRect))
+        {
+            highlightPathButton = !highlightPathButton;
+            PlaySound(assets.GetClickSound());
+        }
+
+        else if (CheckCollisionPointRec(mouse, buildPauseButtonRect))
+        {
+            buildPauseButton = !buildPauseButton;
+            PlaySound(assets.GetClickSound());
+        }
+
+        // --- Boutons d'Ouverture de Sous-Menu ---
+        else if (CheckCollisionPointRec(mouse, volumeButtonRect))
+        {
+            volumeButton = true;
+            PlaySound(assets.GetClickSound());
+        }
+
+        else if (CheckCollisionPointRec(mouse, resetButtonRect))
+        {
+            resetButton = true;
+            PlaySound(assets.GetClickSound());
+        }
+
+        else if (CheckCollisionPointRec(mouse, creditsButtonRect))
+        {
+            creditsButton = true;
+            PlaySound(assets.GetClickSound());
+        }
+    }
+}
+
+void Game::UpdateHelp()
+{
+    PlayTitleAudio();
+    Vector2 mouse = GetMousePosition();
+
+    Rectangle gameplayHelpButtonRect = { 256, 256, 1408, 256 };
+    Rectangle towerHelpButtonRect = { 256, 544, 1408, 256 };
+    Rectangle enemyHelpButtonRect = { 256, 832, 1408, 256 };
+
+    Vector2 returnTitleCenter = { 1692 + 128 / 2.0f, 972 + 128 / 2.0f };
+    float returnTitleRadius = 128 / 2.0f;
+
+    Vector2 returnHelpButton = { 1647 + 64 / 2.0f, 265 + 64 / 2.0f };
+    float returnHelpRadius = 64 / 2.0f;
+
+    if (gameplayHelpButton || towerHelpButton || enemyHelpButton)
+    {
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+            CheckCollisionPointCircle(mouse, returnHelpButton, returnHelpRadius))
+        {
+            gameplayHelpButton = false;
+            towerHelpButton = false;
+            enemyHelpButton = false;
+            PlaySound(assets.GetClickSound());
+
+        }
+        return;
+    }
+
+    if (!canClickHelp) return;
+
+
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointCircle(mouse, returnTitleCenter, returnTitleRadius))
+    {
+        currentScreen = CurrentScreen::TITLE;
+        PlaySound(assets.GetClickSound());
+
+    }
+
+    else if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, gameplayHelpButtonRect))
+    {
+        gameplayHelpButton = true;
+        PlaySound(assets.GetClickSound());
+
+         
+    }
+
+    else if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, towerHelpButtonRect))
+    {
+        towerHelpButton = true;
+        PlaySound(assets.GetClickSound());
+
+         
+    }
+
+    else if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) &&
+        CheckCollisionPointRec(mouse, enemyHelpButtonRect))
+    {
+        enemyHelpButton = true;
+        PlaySound(assets.GetClickSound());
+
+         
+    }
+}
+
+void Game::UpdateGameplay(float dt)
+{
+ 
+    PlayGameplayAudio();
+
+    Vector2 mouse = GetMousePosition();
+
+    Rectangle speed1Rect = { (int)shopArcherRect.x - 950, (int)shopArcherRect.y + 50 , 150, 150 };
+    Rectangle speed2Rect = { (int)shopArcherRect.x - 775, (int)shopArcherRect.y + 50, 150, 150 };
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, speed2Rect))
+    {
+        timeScale = 2.0f;
+    }
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, speed1Rect))
+    {
+        timeScale = 1.0f;
+    }
+
+    float scaled_dt = dt * timeScale;
+
+    PlayTitleAudio();
+
+    if (!mainCastle.Exists())
+    {
+        mainCastle.Init(castlePosition, 1500);
+        CreatePath(castlePosition);
+    }
+
+    if (mainCastle.Exists())
+    {
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && currentDragState == TowerType::NONE)
+        {
+            if (CheckCollisionPointRec(mouse, shopArcherRect)) currentDragState = TowerType::ARCHER;
+            else if (CheckCollisionPointRec(mouse, shopWizardRect)) currentDragState = TowerType::WIZARD;
+            else if (CheckCollisionPointRec(mouse, shopCatapultRect)) currentDragState = TowerType::CATAPULT;
+            PlaySound(assets.GetGrabTowerSound());
+            if (currentDragState != TowerType::NONE && buildPauseButton) pauseGame = true;
+        }
+
+        if (currentDragState != TowerType::NONE)
+        {
+            if (mouse.y < 1000 && mouse.x < 1800 && mouse.y > 100)
+            {
+                canTowerBePlaced = true;
+            }
+            else
+            {
+                canTowerBePlaced = false;
+            }
+        }
+
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && currentDragState != TowerType::NONE)
+        {
+            int cost = 0;
+            if (currentDragState == TowerType::ARCHER) cost = 150;
+            else if (currentDragState == TowerType::WIZARD) cost = 250;
+            else if (currentDragState == TowerType::CATAPULT) cost = 400;
+            PlaySound(assets.GetGrabTowerSound());
+            if (canTowerBePlaced == true)
+            {
+                BuyTower(mouse, currentDragState, cost);
+            }
+
+            currentDragState = TowerType::NONE;
+            canTowerBePlaced = true;
+
+            if (buildPauseButton) pauseGame = false;
+        }
+    }
+
+    if (mainCastle.Exists() && !path.empty())
+    {
+        if (!pauseGame)
+        {
+            if (currentLevel == CurrentLevel::INFINITE)
+            {
+                UpdateWaveSystem(scaled_dt);
+                isBossWaveActive = false;
+            }
+            else
+            {
+                if (currentLevelData && currentWaveIndex < currentLevelData->preBossWaves.size())
+                {
+                    if (currentWaveIndex == currentLevelData->preBossWaves.size() - 1 && !isBossWaveActive)
+                    {
+                        isBossWaveActive = true;
+                        firstFrameGameplayMusic = true;
+                        std::cout << "Attention ! La musique de Boss est dÃ©clenchÃ©e !" << std::endl;
                     }
-                    else { // CATAPULT
-                        explosionRadius = 50.0f;
-                        damageAmount = 100;
-                    }
 
-					// Apply damage to all enemies within the explosion radius
-                    for (int j = 0; j < MAX_ENEMIES; j++) {
-                        if (!enemies[j].alive) continue;
+                    const EnemyWave& currentWave = currentLevelData->preBossWaves[currentWaveIndex];
 
-						// Check collision with explosion radius
-                        if (CheckCollisionCircles(bullets[i].pos, explosionRadius, enemies[j].pos, 30)) {
-                            enemies[j].health -= damageAmount;
-                            if (enemies[j].health <= 0) enemies[j].alive = false;
+                    if (enemiesSpawned < currentWave.count)
+                    {
+                        waveTimer += scaled_dt;
+                        if (waveTimer >= currentWave.interval)
+                        {
+                            AddLevelEnemy(currentWave.enemyType);
+                            enemiesSpawned++;
+                            waveTimer = 0.0f;
                         }
                     }
-                    // Visual Effect
+                    else if (enemies.empty())
+                    {
+                        currentWaveIndex++;
+                        enemiesSpawned = 0;
+                        waveTimer = 0.0f;
+
+                        if (currentWaveIndex >= currentLevelData->preBossWaves.size())
+                        {
+                            std::cout << "VICTOIRE FINALE ! Niveau " << static_cast<int>(currentLevel) << " termine." << std::endl;
+
+                            UnlockNextLevel((int)currentLevel);
+
+                            isBossWaveActive = false;
+                            firstFrameVictoryMusic = true;
+
+                            SetScreen(CurrentScreen::VICTORY);
+                        }
+                        else
+                        {
+                            std::cout << "Vague suivante : " << currentWaveIndex + 1 << std::endl;
+                        }
+                    }
                 }
-                // destoy bullet after impact
-                bullets[i].active = false;
-                break;
+            }
+        }
+
+    }
+
+    for (size_t i = 0; i < enemies.size(); i++) {
+        if (enemies[i]->IsAlive()) {
+            bool wasAlive = enemies[i]->IsAlive();
+
+            enemies[i]->Update(scaled_dt, path, mainCastle.GetLifeRef(), assets);
+
+            if (wasAlive && !enemies[i]->IsAlive()) {
+                GainMoney(enemies[i]->GetReward());
             }
         }
     }
+    for (Tower& tower : towers) {
+        tower.Update(scaled_dt);
+
+        if (tower.CanAttack()) {
+
+            Enemy* targetEnemy = nullptr;
+
+            int targetIndex = tower.GetTargetIndex();
+
+            if (targetIndex != -1 && targetIndex < (int)enemies.size()) {
+                Enemy* potentialTarget = enemies[targetIndex].get();
+
+                float dx = potentialTarget->GetPosition().x - tower.GetPosition().x;
+                float dy = potentialTarget->GetPosition().y - tower.GetPosition().y;
+                float distance = sqrt(dx * dx + dy * dy);
+
+                if (potentialTarget->IsAlive() && distance <= tower.GetRange()) {
+                    targetEnemy = potentialTarget;
+                }
+                else {
+                    tower.SetTargetIndex(-1);
+                }
+            }
+
+            if (targetEnemy == nullptr) {
+                for (size_t i = 0; i < enemies.size(); ++i) {
+                    Enemy* enemy = enemies[i].get();
+                    if (enemy->IsAlive()) {
+                        float dx = enemy->GetPosition().x - tower.GetPosition().x;
+                        float dy = enemy->GetPosition().y - tower.GetPosition().y;
+                        float distance = sqrt(dx * dx + dy * dy);
+
+                        if (distance <= tower.GetRange())
+                        {
+                            targetEnemy = enemy;
+                            tower.SetTargetIndex((int)i);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (targetEnemy != nullptr) {
+                tower.SetTarget(targetEnemy->GetPosition());
+
+                int damage = tower.GetDamage();
+                Bullet newBullet;
+                newBullet.Init(tower.GetPosition(), targetEnemy->GetPosition(), tower.GetType(), damage);
+                newBullet.SetGamePtr(this);
+
+                bullets.push_back(newBullet);
+                tower.ResetAttackTimer();
+            }
+        }
+    }
+
+    for (Bullet& bullet : bullets) {
+        bullet.Update(scaled_dt, assets);
+        bullet.CheckCollision(scaled_dt, enemies, assets);
+    }
+
+    for (Tower& tower : towers) {
+        Rectangle upgradeButtonHitbox = tower.GetUpgradeHitbox();
+        Vector2 mouse = GetMousePosition();
+
+        if (CheckCollisionPointRec(mouse, upgradeButtonHitbox) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && tower.GetLvl() != TowerLvl::LVL7)
+        {
+            int cost = tower.GetUpgradeCost();
+            if (money >= cost) {
+                money -= cost;
+                tower.UpgradeLvl(assets);
+            }
+        }
+    }
+    
+    int totalReward = 0;
+    for (const auto& enemy : enemies) {
+        if (!enemy->IsAlive()) {
+            totalReward += enemy->GetReward();
+        }
+    }
+
+    if (totalReward > 0) {
+        GainMoney(totalReward);
+    }
+    
+
+
+    ClearDeadEntities();
+
+    if (mainCastle.Exists() && !mainCastle.IsAlive()) {
+        firstFrameGameOverMusic = true;
+        SetScreen(CurrentScreen::GAMEOVER);
+        currentDragState = TowerType::NONE;
+    }
 }
 
-void DrawVectorLines() {
-}
 
-void GameDraw(const GameAssets& assets)
+
+void Game::UpdateVictory()
 {
-    // Path
-    if (pathLength > 0) {
-        for (int i = 0; i < pathLength - 1; i++) DrawLineEx(path[i], path[i + 1], 3.0f, Fade(RED, 0.4f));
-        for (int i = 0; i < pathLength; i++) DrawCircleV(path[i], 8, Fade(GREEN, 0.6f));
+    PlayVictoryAudio();
+
+    Vector2 mouse = GetMousePosition();
+    Rectangle titleRect { 266, 831, 544, 189 };
+    Rectangle retryRect { 1110, 831, 544, 189 };
+    Rectangle nextLevelRect { 681, 572, 544, 189 };
+
+    currentDragState = TowerType::NONE;
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, titleRect)) {
+        SetScreen(CurrentScreen::TITLE);
+        PlaySound(assets.GetClickSound());
+
     }
 
-    // Shop UI (Fond des boutons)
-    DrawTexture(assets.shopIconTexture, (int)shopArcherRect.x, (int)shopArcherRect.y, WHITE);
-    DrawTexture(assets.shopIconTexture, (int)shopWizardRect.x, (int)shopWizardRect.y, WHITE);
-    DrawTexture(assets.shopIconTexture, (int)shopCatapultRect.x, (int)shopCatapultRect.y, WHITE);
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, retryRect)) {
+        SetScreen(CurrentScreen::GAMEPLAY);
+        SetupLevel(currentLevel);
+        PlaySound(assets.GetClickLevel());
 
-    // castle
-    for (int i = 0; i < MAX_CASTLES; i++)
-        if (castle[i].exist) {
-            DrawCircleV(castle[i].pos, 60, BLUE);
-            DrawCircleLinesV(castle[i].pos, 325, Fade(ORANGE, 0.3f));
-        }
-
-    // Placement Château (Ghost)
-    if (!castle[0].exist) {
-        Vector2 mouse = GetMousePosition();
-        if (mouse.x < 1750 && mouse.y > 100) DrawCircleV(mouse, 60, Fade(BLUE, 0.3f));
     }
 
-    // --- Dessin des Tours Existantes ---
-    for (int i = 0; i < MAX_TOWERS; i++)
-    {
-        if (towers[i].exist)
+    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, nextLevelRect)) {
+
+        int nextLevelNum = (int)currentLevel + 1;
+
+        const int MAX_STANDARD_LEVEL = (int)CurrentLevel::LEVEL15;
+
+        if (nextLevelNum <= MAX_STANDARD_LEVEL)
         {
-            // On centre l'image (offset 64 car scale 2.0 * 64px width / 2 = 64)
-            Vector2 towerPos = { towers[i].pos.x - 64, towers[i].pos.y - 64 };
-			Vector2 archerPos = { towers[i].pos.x - 50, towers[i].pos.y - 75 };
-			Vector2 wizardPos = { towers[i].pos.x - 64, towers[i].pos.y - 105 };
-			Vector2 catapultPos = { towers[i].pos.x - 40, towers[i].pos.y - 65 };
+            currentLevel = (CurrentLevel)nextLevelNum;
 
-            // On utilise le tableau towerTypes pour savoir quelle texture dessiner
-            if (towerTypes[i] == ARCHER) {
-                DrawTextureEx(assets.lvl1ArcherTowerTexture, towerPos, 0, 2, WHITE);
-                DrawTextureEx(assets.archerTexture, archerPos, 0, 0.75, WHITE);
-                DrawCircleLinesV(towers[i].pos, 250, Fade(WHITE, 0.3f));
-            }
-            else if (towerTypes[i] == WIZARD) {
-                DrawTextureEx(assets.lvl1WizardTowerTexture, towerPos, 0, 2, WHITE);
-                DrawTextureEx(assets.wizardTexture, wizardPos, 0, 1, WHITE);
-                DrawCircleLinesV(towers[i].pos, 200, Fade(WHITE, 0.3f));
-            }
-            else if (towerTypes[i] == CATAPULT) {
-                DrawTextureEx(assets.lvl1CatapultTowerTexture, towerPos, 0, 2, WHITE);
-				DrawTextureEx(assets.catapultTexture, catapultPos, 0, 1, WHITE);
-                DrawCircleLinesV(towers[i].pos, 300, Fade(WHITE, 0.3f));
-            }
-            
+            SetupLevel(currentLevel);
+            SetScreen(CurrentScreen::GAMEPLAY);
+            PlaySound(assets.GetClickLevel());
+        }
+        else
+        {
+            SetScreen(CurrentScreen::TITLE);
+            PlaySound(assets.GetClickSound());
+
         }
     }
+}
 
-    // --- Dessin du Drag & Drop (Ghost Tower sous la souris) ---
-    if (currentDragState != NONE)
-    {
-        Vector2 mouse = GetMousePosition();
-		Vector2 archerDragPos = { mouse.x - 50, mouse.y - 55 }; // Centrage
-        Vector2 wizardDragPos = { mouse.x - 64, mouse.y - 70 }; // Centrage
-		Vector2 catapultDragPos = { mouse.x - 40, mouse.y - 45 }; // Centrage
+void Game::UpdateGameOver()
+{
+    PlayGameOverAudio();
 
-        // On dessine la tour correspondant à ce qu'on drag, avec transparence
-        switch (currentDragState)
-        {
-        case ARCHER:
-            DrawTextureEx(assets.archerTexture, archerDragPos, 0, 0.80f, Fade(WHITE, 0.6f));
-            DrawCircleLinesV(mouse, 250, Fade(WHITE, 0.3f)); // Portée prévisionnelle
-            break;
-        case WIZARD:
-            DrawTextureEx(assets.wizardTexture/*lvl1WizardTowerTexture*/, wizardDragPos, 0, 1, Fade(WHITE, 0.6f));
-            DrawCircleLinesV(mouse, 200, Fade(WHITE, 0.3f));
-            break;
-        case CATAPULT:
-            DrawTextureEx(assets.catapultTexture, catapultDragPos, 0, 0.90f, Fade(WHITE, 0.6f));
-            DrawCircleLinesV(mouse, 300, Fade(WHITE, 0.3f));
-            break;
-        default: break;
+    Vector2 mouse = GetMousePosition();
+    Rectangle titleRect{ 266, 831, 544, 189 };
+    Rectangle retryRect{ 1110, 831, 544, 189 };
+
+    currentDragState = TowerType::NONE;
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, titleRect)) {
+            SetScreen(CurrentScreen::TITLE);
+            PlaySound(assets.GetClickSound());
+
+        }
+
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(mouse, retryRect)) {
+            SetScreen(CurrentScreen::GAMEPLAY);
+            SetupLevel(currentLevel);
+            PlaySound(assets.GetClickLevel());
+
         }
     }
 
-    // Ennemies
-    for (int i = 0; i < MAX_ENEMIES; i++) if (enemies[i].alive)
+
+
+void Game::ApplySettings()
+{
+    PlayGameOverAudio();
+
+    Vector2 mouse = GetMousePosition();
+    Vector2 origin = { 0, 0 };
+
+    if (creditsButton)
     {
-        switch (enemies[i].type)
+        DrawTextureEx(assets.GetCreditsTexture(), origin, 0, 1, WHITE);
+    }
+
+    if (resetButton)
+    {
+        DrawTextureEx(assets.GetResetTexture(), origin, 0, 1, WHITE);
+    }
+
+    if (volumeButton)
+    {
+        Rectangle masterVolume0Rec = { 935, 463 , 43, 32 };
+        Rectangle masterVolume25Rec = { 978, 463, 87, 32 };
+
+        DrawTextureEx(assets.GetVolumeOptionTexture(), origin, 0, 1, WHITE);
+
+        if (masterVolume == 0)
         {
-        case NORMAL:
-            DrawTextureEx(assets.necromancerTexture, Vector2{ enemies[i].pos.x - 48, enemies[i].pos.y - 48 }, 0, 3, WHITE);
-            break;
-        case FAST:
-            DrawTextureEx(assets.ferretTexture, Vector2{ enemies[i].pos.x - 48, enemies[i].pos.y - 48 }, 0, 3, WHITE);
-            break;
-        case TANK:
-            DrawTextureEx(assets.cacodaemonTexture, Vector2{ enemies[i].pos.x - 48, enemies[i].pos.y - 48 }, 0, 2, WHITE);
-            break;
+            DrawTextureEx(assets.GetMasterVolume0(), origin, 0, 1, WHITE);
+            ApplyMasterVolume(0);
+        }
+        else if (masterVolume == 25)
+        {
+            DrawTextureEx(assets.GetMasterVolume25(), origin, 0, 1, WHITE);
+            ApplyMasterVolume(0.25f);
+        }
+        else if (masterVolume == 50)
+        {
+            DrawTextureEx(assets.GetMasterVolume50(), origin, 0, 1, WHITE);
+            ApplyMasterVolume(0.50f);
+        }
+        else if (masterVolume == 75)
+        {
+            DrawTextureEx(assets.GetMasterVolume75(), origin, 0, 1, WHITE);
+            ApplyMasterVolume(0.75f);
+        }
+        else if (masterVolume == 100)
+        {
+            DrawTextureEx(assets.GetMasterVolume100(), origin, 0, 1, WHITE);
+            ApplyMasterVolume(1.00f);
+        }
+        if (musicVolume == 0)
+        {
+            DrawTextureEx(assets.GetMusicVolume0(), origin, 0, 1, WHITE);
+            ApplyMusicVolume(0);
+        }
+        else if (musicVolume == 25)
+        {
+            DrawTextureEx(assets.GetMusicVolume25(), origin, 0, 1, WHITE);
+            ApplyMusicVolume(0.25f);
+        }
+        else if (musicVolume == 50)
+        {
+            DrawTextureEx(assets.GetMusicVolume50(), origin, 0, 1, WHITE);
+            ApplyMusicVolume(0.50f);
+        }
+        else if (musicVolume == 75)
+        {
+            DrawTextureEx(assets.GetMusicVolume75(), origin, 0, 1, WHITE);
+            ApplyMusicVolume(0.75f);
+        }
+        else if (musicVolume == 100)
+        {
+            DrawTextureEx(assets.GetMusicVolume100(), origin, 0, 1, WHITE);
+            ApplyMusicVolume(1.00f);
+        }
+        if (sfxVolume == 0)
+        {
+            DrawTextureEx(assets.GetSfxVolume0(), origin, 0, 1, WHITE);
+            ApplySfxVolume(0);
+        }
+        else if (sfxVolume == 25)
+        {
+            DrawTextureEx(assets.GetSfxVolume25(), origin, 0, 1, WHITE);
+            ApplySfxVolume(0.25f);
+        }
+        else if (sfxVolume == 50)
+        {
+            DrawTextureEx(assets.GetSfxVolume50(), origin, 0, 1, WHITE);
+            ApplySfxVolume(0.50f);
+        }
+        else if (sfxVolume == 75)
+        {
+            DrawTextureEx(assets.GetSfxVolume75(), origin, 0, 1, WHITE);
+            ApplySfxVolume(0.75f);
+        }
+        else if (sfxVolume == 100)
+        {
+            DrawTextureEx(assets.GetSfxVolume100(), origin, 0, 1, WHITE);
+            ApplySfxVolume(1.00f);
+        }
+    }
+}
+
+void Game::UpdateVolumeOptions()
+{
+    Vector2 mouse = GetMousePosition();
+    bool mousePressed = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+
+    bool volumeChanged = false;
+
+    Rectangle masterVolume0Rec = { 935, 463 , 43, 32 };
+    Rectangle masterVolume25Rec = { 978, 463, 87, 32 };
+    Rectangle masterVolume50Rec = { 1065, 463, 86, 32 };
+    Rectangle masterVolume75Rec = { 1151, 463, 87, 32 };
+    Rectangle masterVolume100Rec = { 1238, 463, 43, 32 };
+
+    Rectangle musicVolume0Rec = { 935, 565 , 43, 32 };
+    Rectangle musicVolume25Rec = { 978, 565, 87, 32 };
+    Rectangle musicVolume50Rec = { 1065, 565, 86, 32 };
+    Rectangle musicVolume75Rec = { 1151, 565, 87, 32 };
+    Rectangle musicVolume100Rec = { 1238, 565, 43, 32 };
+
+    Rectangle sfxVolume0Rec = { 935, 667 , 43, 32 };
+    Rectangle sfxVolume25Rec = { 978, 667, 87, 32 };
+    Rectangle sfxVolume50Rec = { 1065, 667, 86, 32 };
+    Rectangle sfxVolume75Rec = { 1151, 667, 87, 32 };
+    Rectangle sfxVolume100Rec = { 1238, 667, 43, 32 };
+
+    if (mousePressed)
+    {
+        if (CheckCollisionPointRec(mouse, masterVolume0Rec)) {
+            masterVolume = 0;  
+        }
+        else if (CheckCollisionPointRec(mouse, masterVolume25Rec)) {
+            masterVolume = 25;  
+        }
+        else if (CheckCollisionPointRec(mouse, masterVolume50Rec)) {
+            masterVolume = 50;  
+        }
+        else if (CheckCollisionPointRec(mouse, masterVolume75Rec)) {
+            masterVolume = 75;  
+        }
+        else if (CheckCollisionPointRec(mouse, masterVolume100Rec)) {
+            masterVolume = 100;  
+        }
+        else if (CheckCollisionPointRec(mouse, musicVolume0Rec)) {
+            musicVolume = 0;  
+        }
+        else if (CheckCollisionPointRec(mouse, musicVolume25Rec)) {
+            musicVolume = 25;  
+        }
+        else if (CheckCollisionPointRec(mouse, musicVolume50Rec)) {
+            musicVolume = 50;  
+        }
+        else if (CheckCollisionPointRec(mouse, musicVolume75Rec)) {
+            musicVolume = 75;  
+        }
+        else if (CheckCollisionPointRec(mouse, musicVolume100Rec)) {
+            musicVolume = 100;  
+        }
+        else if (CheckCollisionPointRec(mouse, sfxVolume0Rec)) {
+            sfxVolume = 0;  
+        }
+        else if (CheckCollisionPointRec(mouse, sfxVolume25Rec)) {
+            sfxVolume = 25;  
+        }
+        else if (CheckCollisionPointRec(mouse, sfxVolume50Rec)) {
+            sfxVolume = 50;  
+        }
+        else if (CheckCollisionPointRec(mouse, sfxVolume75Rec)) {
+            sfxVolume = 75;  
+        }
+        else if (CheckCollisionPointRec(mouse, sfxVolume100Rec)) {
+            sfxVolume = 100;  
         }
     }
 
-	// Bullets
-    for (int i = 0; i < MAX_BULLETS; i++)
+
+}
+
+void Game::ApplyMasterVolume(float volume)
+{
+    SetMasterVolume(volume);
+}
+
+void Game::ApplyMusicVolume(float volume)
+{
+    SetMusicVolume(assets.GetVictoryMusic(), volume);
+    SetMusicVolume(assets.GetGameOverMusic(), volume);
+    SetMusicVolume(assets.GetLevelMusic(), volume);
+    SetMusicVolume(assets.GetInfiniteMusic(), volume);
+    SetMusicVolume(assets.GetBossMusic(), volume);
+    SetMusicVolume(assets.GetTitleMusic(), volume);
+
+    SetMusicVolume(assets.GetWaveBeginMusic(), volume);
+}
+
+void Game::ApplySfxVolume(float volume)
+{
+    SetSoundVolume(assets.GetArcherShot(), volume);
+    SetSoundVolume(assets.GetWizardShot(), volume);
+    SetSoundVolume(assets.GetCatapultShot(), volume);
+
+    SetSoundVolume(assets.GetClickSound(), volume);
+    SetSoundVolume(assets.GetClickLevel(), volume);
+    SetSoundVolume(assets.GetLockedLevel(), volume);
+    SetSoundVolume(assets.GetResetSound(), volume);
+    SetSoundVolume(assets.GetGrabTowerSound(), volume);
+    SetSoundVolume(assets.GetLevelUpSound(), volume);
+
+    SetSoundVolume(assets.GetDeath1(), volume);
+    SetSoundVolume(assets.GetDeath2(), volume);
+    SetSoundVolume(assets.GetDeath3(), volume);
+
+}
+
+void Game::Draw() {
+    BeginDrawing();
+    ClearBackground(DARKGRAY);
+
+    switch (currentScreen) {
+    case CurrentScreen::TITLE: DrawTitle(); break;
+    case CurrentScreen::CHOOSE_LEVEL: DrawChooseLevel(); break;
+    case CurrentScreen::SETTINGS:
     {
-        if (bullets[i].active)
+        DrawSettings();
+        ApplySettings();
+        break;
+    }
+    case CurrentScreen::HELP:
+    {
+        DrawHelp();
+        break;
+    }
+
+    case CurrentScreen::GAMEPLAY: DrawGameplay(); break;
+    case CurrentScreen::VICTORY: DrawVictory(); break;
+    case CurrentScreen::GAMEOVER: DrawGameOver(); break;
+    }
+  
+    Vector2 mouse = GetMousePosition();
+    if (assets.GetMouseTexture().id > 0) {
+        float drawX = mouse.x - assets.GetMouseTexture().width / 2 + 425;
+        float drawY = mouse.y - assets.GetMouseTexture().height / 2 + 188;
+        DrawTextureEx(assets.GetMouseTexture(), Vector2{ drawX, drawY }, 0.0f, 0.15f, WHITE);
+    }
+    EndDrawing();
+}
+
+void Game::DrawTitle() const
+{
+    DrawTexture(assets.GetTitleScreenTexture(), 0, 0, WHITE);
+
+}
+
+void Game::DrawChooseLevel() const
+{
+    DrawTexture(assets.GetLevelSelectionTexture(), 0, 0, WHITE);
+
+    const float BUTTON_SIZE = 103.0f;
+    const float X_SPACING = 288.0f;
+    const float Y_SPACING = 288.0f;
+    const Vector2 START_POS = { 332.0f, 332.0f };
+
+    for (int i = 0; i < 15; i++)
+    {
+        int col = i % 5;
+        int row = i / 5;
+
+        Vector2 buttonPos;
+        buttonPos.x = START_POS.x + (float)col * X_SPACING;
+        buttonPos.y = START_POS.y + (float)row * Y_SPACING;
+
+        if (IsLevelLocked(i + 1))
         {
-            switch (bullets[i].type)
+            DrawTextureEx(assets.GetLockTexture(), buttonPos, 0, 1, WHITE);
+        }
+
+    }
+}
+
+void Game::DrawSettings() const
+{
+    DrawTexture(assets.GetSettingsTexture(), 0, 0, WHITE);
+
+    Vector2 mouse = GetMousePosition();
+
+    Vector2 lifeBarButtonPos = { 486, 402 };
+    Vector2 damageNumberButtonPos = { 554, 637 };
+    Vector2 highlightPathButtonPos = { 1045, 402 };
+    Vector2 buildPauseButtonPos = { 1030, 637 };
+    Vector2 origin = { 0, 0 };
+
+    if (Game::lifeBarButton) DrawTextureEx(assets.GetGreenButtonTexture(), lifeBarButtonPos, 0, 1, WHITE);
+    else DrawTextureEx(assets.GetRedButtonTexture(), lifeBarButtonPos, 0, 1, WHITE);
+
+    if (Game::damageNumberButton) DrawTextureEx(assets.GetGreenButtonTexture(), damageNumberButtonPos, 0, 1, WHITE);
+    else DrawTextureEx(assets.GetRedButtonTexture(), damageNumberButtonPos, 0, 1, WHITE);
+
+    if (Game::highlightPathButton) DrawTextureEx(assets.GetGreenButtonTexture(), highlightPathButtonPos, 0, 1, WHITE);
+    else DrawTextureEx(assets.GetRedButtonTexture(), highlightPathButtonPos, 0, 1, WHITE);
+
+    if (Game::buildPauseButton) DrawTextureEx(assets.GetGreenButtonTexture(), buildPauseButtonPos, 0, 1, WHITE);
+    else DrawTextureEx(assets.GetRedButtonTexture(), buildPauseButtonPos, 0, 1, WHITE);
+}
+
+void Game::DrawHelp() const
+{
+    DrawTexture(assets.GetHelpTexture(), 0, 0, WHITE);
+
+    if (gameplayHelpButton)
+    {
+        DrawTexture(assets.GetGameplayHelpTexture(), 0, 0, WHITE);
+    }
+    else if (towerHelpButton)
+    {
+        DrawTexture(assets.GetTowerHelpTexture(), 0, 0, WHITE);
+    }
+    else if (enemyHelpButton)
+    {
+        DrawTexture(assets.GetEnemyHelpTexture(), 0, 0, WHITE);
+    }
+}
+
+
+void Game::DrawLvl1() const
+{
+    DrawTexture(assets.GetLvl1BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl2() const
+{
+    DrawTexture(assets.GetLvl2BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl3() const
+{
+    DrawTexture(assets.GetLvl3BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl4() const
+{
+    DrawTexture(assets.GetLvl1BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl5() const
+{
+    DrawTexture(assets.GetLvl2BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl6() const
+{
+    DrawTexture(assets.GetLvl2BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl7() const
+{
+    DrawTexture(assets.GetLvl3BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl8() const
+{
+    DrawTexture(assets.GetLvl1BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl9() const
+{
+    DrawTexture(assets.GetLvl2BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl10() const
+{
+    DrawTexture(assets.GetLvl3BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl11() const
+{
+    DrawTexture(assets.GetLvl1BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl12() const
+{
+    DrawTexture(assets.GetLvl2BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl13() const
+{
+    DrawTexture(assets.GetLvl3BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl14() const
+{
+    DrawTexture(assets.GetLvl1BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawLvl15() const
+{
+    DrawTexture(assets.GetLvl2BackgroundTexture(), 0, 0, WHITE);
+}
+
+void Game::DrawGameplay() const
+{
+
+    if (currentLevel == CurrentLevel::INFINITE && g_currentRandomMapIndex >= 0 && g_currentRandomMapIndex < (int)g_randomMaps.size())
+    {
+        const auto& m = g_randomMaps[g_currentRandomMapIndex];
+        if (m.loaded && m.texture.id > 0) DrawTexture(m.texture, 0, 0, WHITE);
+        else DrawTexture(assets.GetCastleTexture(), 0, 0, WHITE);
+    }
+    else
+    {
+        switch (currentLevel)
+        {
+        case CurrentLevel::LEVEL1: DrawLvl1(); break;
+        case CurrentLevel::LEVEL2: DrawLvl2(); break;
+        case CurrentLevel::LEVEL3: DrawLvl3(); break;
+        case CurrentLevel::LEVEL4: DrawLvl4(); break;
+        case CurrentLevel::LEVEL5: DrawLvl5(); break;
+        case CurrentLevel::LEVEL6: DrawLvl6(); break;
+        case CurrentLevel::LEVEL7: DrawLvl7(); break;
+        case CurrentLevel::LEVEL8: DrawLvl8(); break;
+        case CurrentLevel::LEVEL9: DrawLvl9(); break;
+        case CurrentLevel::LEVEL10: DrawLvl10(); break;
+        case CurrentLevel::LEVEL11: DrawLvl11(); break;
+        case CurrentLevel::LEVEL12: DrawLvl12(); break;
+        case CurrentLevel::LEVEL13: DrawLvl13(); break;
+        case CurrentLevel::LEVEL14: DrawLvl14(); break;
+        case CurrentLevel::LEVEL15: DrawLvl15(); break;
+        }
+
+    }
+
+    Vector2 mouse = GetMousePosition();
+
+    if (currentLevel == CurrentLevel::INFINITE)
+    {
+        
+
+        if (GetWaveAnnouncementTimer() > 0.0f)
+        {
+            const char* waveText = TextFormat("WAVE %i", GetCurrentWave());
+            int fontSize = 120;
+            int textWidth = MeasureText(waveText, fontSize);
+            int textX = 1920 / 2 - textWidth / 2;
+            int textY = 1200 / 2 - fontSize / 2;
+
+            DrawRectangle(0, 0, 1920, 1200, Fade(BLACK, 0.5f));
+
+            DrawText(waveText, textX + 4, textY + 4, fontSize, BLACK);
+            DrawText(waveText, textX, textY, fontSize, YELLOW);
+        }
+    }
+
+    if (highlightPathButton)
+    {
+        if (!path.empty())
+        {
+            if (path.size() > 1)
             {
-            case ARCHER:
-                DrawCircleV(bullets[i].pos, 10, LIGHTGRAY);
-                break;
-            case WIZARD:
-                DrawTextureEx(assets.fireBallTexture, Vector2{ bullets[i].pos.x - 16, bullets[i].pos.y - 16 }, 0, 1, ORANGE);
-                break;
-            case CATAPULT:
-                DrawCircleV(bullets[i].pos, 15, BROWN);
-                break;
-            default:
-                break;
+                for (size_t i = 1; i < path.size(); i++)
+                {
+                    Vector2 startPos = path[i - 1].position;
+                    Vector2 endPos = path[i].position;
+                    DrawLineEx(startPos, endPos, 10.0f, Fade(RED, 0.6f));
+                }
+            }
+
+            for (const auto& p : path)
+            {
+                DrawCircle((int)p.position.x, (int)p.position.y, p.radius, Fade(GREEN, 0.6f));
             }
         }
     }
 
-    // Spawn point
+    if (mainCastle.Exists())
+    {
+        mainCastle.Draw(assets);
+    }
+    else
+    {
+        Vector2 mouseLocal = GetMousePosition();
+        if (mouseLocal.x < 1750 && mouseLocal.y > 100) {
+            DrawCircleV(mouseLocal, 60, Fade(BLUE, 0.3f));
+        }
+    }
+
+    for (const auto& enemy : enemies) {
+        enemy->Draw(assets);
+    }
+
+    for (const auto& bullet : bullets) {
+        bullet.Draw(assets);
+    }
+
+    for (const auto& tower : towers) {
+        tower.Draw(assets);
+    }
+
+    if (mainCastle.Exists()) {
+        Vector2 pos = mainCastle.GetPosition();
+        int currentLife = mainCastle.GetLife();
+        int maxLife = mainCastle.GetMaxLife();
+        float lifePercent = (float)currentLife / (float)maxLife * 100.0f;
+        Vector2 castleLifePos = { pos.x - 100, pos.y - 250 };
+        DrawTextureEx(assets.GetLifeTexture(lifePercent), castleLifePos, 0, 3.0f, WHITE);
+    }
+
     DrawCircleV(spawnPoint, 15, GREEN);
-    DrawText("SPAWN", 20, 580, 20, WHITE);
 
-    // Icônes du magasin (Overlay final pour être sûr qu'elles sont au dessus)
-    // Archer
-    if (currentDragState != ARCHER)
+    Vector2 coinPos = { (int)shopArcherRect.x - 300, (int)shopArcherRect.y + 50 };
+    Vector2 wavePos = { (int)shopArcherRect.x - 1325, (int)shopArcherRect.y + 60 };
+    Vector2 x1Pos = { (int)shopArcherRect.x - 950, (int)shopArcherRect.y + 50 };
+    Vector2 x2Pos = { (int)shopArcherRect.x - 775, (int)shopArcherRect.y + 50 };
+
+    DrawTexture(assets.GetShopIconTexture(), (int)shopArcherRect.x, (int)shopArcherRect.y, WHITE);
+    DrawTexture(assets.GetShopIconTexture(), (int)shopWizardRect.x, (int)shopWizardRect.y, WHITE);
+    DrawTexture(assets.GetShopIconTexture(), (int)shopCatapultRect.x, (int)shopCatapultRect.y, WHITE);
+    DrawTexture(assets.GetCoinIconTexture(), (int)shopArcherRect.x - 325, (int)shopArcherRect.y, WHITE);
+    DrawTexture(assets.GetCoinIconTexture(), (int)shopArcherRect.x - 1375, (int)shopArcherRect.y, WHITE);
+    DrawTextPro(assets.GetMedievalFont(), TextFormat("Coins : %i", money), coinPos, { 0.0f, 0.0f }, 0, 45.0f, 2.0f, BLACK);
+    if (currentLevel == CurrentLevel::INFINITE)
     {
-        DrawTextureEx(assets.archerTexture, Vector2{ 1410 + 25, 1030 + 18 }, 0, 0.80f, WHITE);
+     DrawTextPro(assets.GetMedievalFont(), TextFormat("Wave : %i", currentWave), wavePos, { 0.0f, 0.0f }, 0, 45.0f, 2.0f, BLACK);
+
     }
-    DrawText("$100", 1410 + 13 + 50 - MeasureText("$100", 20) / 2, 1030 + 13 + 85, 20, YELLOW);
-
-    // Wizard
-    if (currentDragState != WIZARD)
+    else
     {
-        DrawTextureEx(assets.wizardTexture, Vector2{ 1580 + 13, 1030 + 5 }, 0, 1, WHITE);
-	}
-    DrawText("$150", 1580 + 13 + 50 - MeasureText("$150", 20) / 2, 1030 + 13 + 85, 20, YELLOW);
+        int nextLevelNum = (int)currentLevel;
+        DrawTextPro(assets.GetMedievalFont(), TextFormat("Level : %i", nextLevelNum), wavePos, { 0.0f, 0.0f }, 0, 45.0f, 2.0f, BLACK);
+    }
 
-    // Catapult
-    if (currentDragState != CATAPULT)
+    DrawTexture(assets.GetShopIconTexture(), (int)shopArcherRect.x - 1000, (int)shopArcherRect.y, WHITE);
+    DrawTexture(assets.GetShopIconTexture(), (int)shopArcherRect.x - 825, (int)shopArcherRect.y, WHITE);
+    DrawTextPro(assets.GetMedievalFont(), TextFormat("X1", currentWave), x1Pos, { 0.0f, 0.0f }, 0, 60.0f, 2.0f, BLACK);
+    DrawTextPro(assets.GetMedievalFont(), TextFormat("X2", currentWave), x2Pos, { 0.0f, 0.0f }, 0, 60.0f, 2.0f, BLACK);
+
+    if (currentDragState != TowerType::NONE)
     {
-        DrawTextureEx(assets.catapultTexture, Vector2{ 1750 + 40, 1030 + 30 }, 0, 0.90f, WHITE);
-	}
-    DrawText("$200", 1750 + 13 + 50 - MeasureText("$200", 20) / 2, 1030 + 13 + 85, 20, YELLOW);
+        Vector2 archerDragPos = { mouse.x - 50, mouse.y - 55 };
+        Vector2 wizardDragPos = { mouse.x - 64, mouse.y - 70 };
+        Vector2 catapultDragPos = { mouse.x - 40, mouse.y - 45 };
+        Color red = RED;
+        Color white = WHITE;
+
+        if (!canTowerBePlaced || IsPositionOnPath(mouse))
+        {
+            switch (currentDragState)
+            {
+            case TowerType::ARCHER:
+                DrawTextureEx(assets.GetArcherTexture(), archerDragPos, 0, 0.80f, Fade(red, 0.6f));
+                DrawCircleLinesV(mouse, 150, Fade(WHITE, 0.3f));
+                break;
+            case TowerType::WIZARD:
+                DrawTextureEx(assets.GetWizardTexture(), wizardDragPos, 0, 1, Fade(red, 0.6f));
+                DrawCircleLinesV(mouse, 200, Fade(WHITE, 0.3f));
+                break;
+            case TowerType::CATAPULT:
+                DrawTextureEx(assets.GetCatapultTexture(), catapultDragPos, 0, 0.75f, Fade(red, 0.6f));
+                DrawCircleLinesV(mouse, 250, Fade(WHITE, 0.3f));
+                break;
+            default: break;
+            }
+        }
+        else
+        {
+            switch (currentDragState)
+            {
+            case TowerType::ARCHER:
+                DrawTextureEx(assets.GetArcherTexture(), archerDragPos, 0, 0.80f, Fade(white, 0.6f));
+                DrawCircleLinesV(mouse, 150, Fade(WHITE, 0.3f));
+                break;
+            case TowerType::WIZARD:
+                DrawTextureEx(assets.GetWizardTexture(), wizardDragPos, 0, 1, Fade(white, 0.6f));
+                DrawCircleLinesV(mouse, 200, Fade(WHITE, 0.3f));
+                break;
+            case TowerType::CATAPULT:
+                DrawTextureEx(assets.GetCatapultTexture(), catapultDragPos, 0, 0.75f, Fade(white, 0.6f));
+                DrawCircleLinesV(mouse, 250, Fade(WHITE, 0.3f));
+                break;
+            default: break;
+            }
+        }
+    }
+
+    if (currentDragState != TowerType::ARCHER)
+    {
+        DrawTextureEx(assets.GetArcherTexture(), Vector2{ 1410 + 25, 1030 + 18 }, 0, 0.80f, WHITE);
+    }
+    DrawText("$150", 1410 + 13 + 50 - MeasureText("$100", 20) / 2, 900 + 13 + 85, 20, YELLOW);
+
+    if (currentDragState != TowerType::WIZARD)
+    {
+        DrawTextureEx(assets.GetWizardTexture(), Vector2{ 1580 + 13, 1030 + 5 }, 0, 1, WHITE);
+    }
+    DrawText("$250", 1580 + 13 + 50 - MeasureText("$150", 20) / 2, 900 + 13 + 85, 20, YELLOW);
+
+    if (currentDragState != TowerType::CATAPULT)
+    {
+        DrawTextureEx(assets.GetCatapultTexture(), Vector2{ 1750 + 40, 1030 + 30 }, 0, 0.90f, WHITE);
+    }
+    DrawText("$400", 1750 + 13 + 50 - MeasureText("$200", 20) / 2, 900 + 13 + 85, 20, YELLOW);
 }
 
-void DrawLifeBar(const GameAssets& assets)
+void Game::DrawVictory() const
 {
+    DrawTexture(assets.GetLevelVictoryTexture(), 0, 0, WHITE);
+    
+}
 
-    // Life UI
-    for (int i = 0; i < MAX_ENEMIES; i++)
+void Game::DrawGameOver() const
+{
+    if (currentLevel == CurrentLevel::INFINITE)
     {
-        if (enemies[i].alive)
+        Vector2 currentWavePos{ 975, 410 };
+        Vector2 bestWavePos{ 975, 654 };
+        DrawTexture(assets.GetInfiniteGameOverTexture(), 0, 0, WHITE);
+        DrawTextEx(assets.GetMedievalFont(), TextFormat("%i", currentWave), currentWavePos, 100.0f, 10.0f, BLACK);
+        DrawTextEx(assets.GetMedievalFont(), TextFormat("%i", bestWave), bestWavePos, 100.0f, 10.0f, BLACK);
+    }
+    else
+    {
+        DrawTexture(assets.GetLevelGameOverTexture(), 0, 0, WHITE);
+
+    }
+
+}
+
+
+void Game::UpdateWaveSystem(float dt)
+{
+    if (waveAnnouncementTimer > 0.0f)
+    {
+        waveAnnouncementTimer -= dt;
+    }
+    if (IsMusicStreamPlaying(assets.GetWaveBeginMusic()))
+    {
+        UpdateMusicStream(assets.GetWaveBeginMusic());
+    }
+
+    if (!isWaveActive && waveCooldownTimer > 0.0f)
+    {
+        waveCooldownTimer -= dt;
+        if (waveCooldownTimer <= 0.0f) StartNewWave();
+    }
+    else if (isWaveActive)
+    {
+        if (enemiesSpawnedThisWave >= totalEnemiesInWave)
         {
-            Vector2 enemyLifePos;
-            switch (enemies[i].type)
+            if (enemies.empty())
             {
-            case NORMAL:
-                enemyLifePos = { enemies[i].pos.x - 50, enemies[i].pos.y - 70 };
-                break;
-            case FAST:
-                enemyLifePos = { enemies[i].pos.x - 40, enemies[i].pos.y - 55 };
-                break;
-            case TANK:
-                enemyLifePos = { enemies[i].pos.x - 30, enemies[i].pos.y - 70 };
-                break;
+                isWaveActive = false;
+                waveCooldownTimer = timeBetweenWaves;
             }
+        }
+        else 
+        {
+            waveSpawnTimer += dt;
+            if (waveSpawnTimer >= timeBetweenSpawns)
+            {
+                EnemyType typeToSpawn = EnemyType::NORMAL;
 
-			float enemylifePercent = (enemies[i].health * 100) / enemies[i].maxLife;
+                bool foundType = false;
+                while (!foundType)
+                {
+                    int numFAST = waveSystem.GetNumOfFAST();
+                    int numNORMAL = waveSystem.GetNumOfNORMAL();
+                    int numTANK = waveSystem.GetNumOfTANK();
 
-            if (enemylifePercent == 100)
-            {
-                DrawTextureEx(assets.fullLifeTexture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 93.5)
-            {
-                DrawTextureEx(assets.life1Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 87)
-            {
-                DrawTextureEx(assets.life2Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 80.5)
-            {
-                DrawTextureEx(assets.life3Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 74)
-            {
-                DrawTextureEx(assets.life4Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 67.5)
-            {
-                DrawTextureEx(assets.life5Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 61)
-            {
-                DrawTextureEx(assets.life6Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 54.5)
-            {
-                DrawTextureEx(assets.life7Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 48)
-            {
-                DrawTextureEx(assets.life8Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 41.5)
-            {
-                DrawTextureEx(assets.life9Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 35)
-            {
-                DrawTextureEx(assets.life10Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 28.5)
-            {
-                DrawTextureEx(assets.life11Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 22)
-            {
-                DrawTextureEx(assets.life12Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 15.5)
-            {
-                DrawTextureEx(assets.life13Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent >= 9)
-            {
-                DrawTextureEx(assets.life14Texture, enemyLifePos, 0, 1.5f, WHITE);
-            }
-            else if (enemylifePercent > 0)
-            {
-                DrawTextureEx(assets.life15Texture, enemyLifePos, 0, 1.5f, WHITE);
+                    int totalAvailableTypes = (numFAST > 0 ? 1 : 0) +
+                        (numNORMAL > 0 ? 1 : 0) +
+                        (numTANK > 0 ? 1 : 0);
+
+                    if (totalAvailableTypes == 0) return; // Quota Ã©puisÃ©
+
+                    int randomChoice = rand() % 3;
+
+                    if (randomChoice == 0 && numFAST > 0)
+                    {
+                        typeToSpawn = EnemyType::FAST;
+                        waveSystem.ModifyNumOfFAST(-1);
+                        foundType = true;
+                    }
+                    else if (randomChoice == 1 && numNORMAL > 0)
+                    {
+                        typeToSpawn = EnemyType::NORMAL;
+                        waveSystem.ModifyNumOfNORMAL(-1);
+                        foundType = true;
+                    }
+                    else if (randomChoice == 2 && numTANK > 0)
+                    {
+                        typeToSpawn = EnemyType::TANK;
+                        waveSystem.ModifyNumOfTANK(-1);
+                        foundType = true;
+                    }
+                }
+
+                if (typeToSpawn == EnemyType::TANK)
+                {
+                    if (waveSystem.GetNumOfFAST() > 0)
+                    {
+                        AddEnemy(typeToSpawn, currentWaveHealthMultiplier, currentWaveSpeedMultiplier);
+                        enemiesSpawnedThisWave++;
+                        waveSpawnTimer = 0.0f;
+
+                        EnemyType typeFAST = EnemyType::FAST;
+                        waveSystem.ModifyNumOfFAST(-1);
+
+                        AddEnemy(typeFAST, currentWaveHealthMultiplier, currentWaveSpeedMultiplier, true);
+                        enemiesSpawnedThisWave++;
+
+                        return;
+                    }
+                }
+
+                AddEnemy(typeToSpawn, currentWaveHealthMultiplier, currentWaveSpeedMultiplier);
+                enemiesSpawnedThisWave++;
+                waveSpawnTimer = 0.0f;
             }
         }
     }
 
-	Vector2 castleLifePos = { castle[0].pos.x - 100, castle[0].pos.y - 175 };
-	// castle life
-    if (castle[0].exist)
-    {
-		float castleLifePercent = (castle[0].life * 100) / castle[0].maxLife;
+    if (currentWave > bestWave) bestWave = currentWave;
+}
 
-        if (castleLifePercent == 100)
+void Game::StartNewWave()
+{
+    currentWave = (currentWave == 0) ? 1 : currentWave + 1;
+
+    waveSystem.ResetWaveCounts();
+
+    CalculateWaveEnemies();
+
+    if (currentLevel == CurrentLevel::INFINITE && !g_randomMaps.empty())
+    {
+        if ((currentWave - 1) % g_mapChangeInterval == 0)
         {
-            DrawTextureEx(assets.fullLifeTexture, castleLifePos, 0, 3.0f, WHITE);
+           
+            LoadMapForLevel(CurrentLevel::INFINITE);
+
+            mainCastle.Init(castlePosition, mainCastle.GetMaxLife());
+
         }
-        else if (castleLifePercent >= 93.5)
-        {
-            DrawTextureEx(assets.life1Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 87)
-        {
-            DrawTextureEx(assets.life2Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 80.5)
-        {
-            DrawTextureEx(assets.life3Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 74)
-        {
-            DrawTextureEx(assets.life4Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 67.5)
-        {
-            DrawTextureEx(assets.life5Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 61)
-        {
-            DrawTextureEx(assets.life6Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 54.5)
-        {
-            DrawTextureEx(assets.life7Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 48)
-        {
-            DrawTextureEx(assets.life8Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 41.5)
-        {
-            DrawTextureEx(assets.life9Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 35)
-        {
-            DrawTextureEx(assets.life10Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 28.5)
-        {
-            DrawTextureEx(assets.life11Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 22)
-        {
-            DrawTextureEx(assets.life12Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 15.5)
-        {
-            DrawTextureEx(assets.life13Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent >= 9)
-        {
-            DrawTextureEx(assets.life14Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-        else if (castleLifePercent > 0)
-        {
-            DrawTextureEx(assets.life15Texture, castleLifePos, 0, 3.0f, WHITE);
-        }
-	}
+    }
+
+    isWaveActive = true;
+    enemiesSpawnedThisWave = 0;
+    waveSpawnTimer = 0.0f;
+    waveCooldownTimer = 0.0f;
+    waveAnnouncementTimer = 3.0f;
+
+    Music& waveMusic = assets.GetWaveBeginMusic();
+    waveMusic.looping = false;
+    StopMusicStream(waveMusic);
+    PlayMusicStream(waveMusic);
+}
+
+void Game::CalculateWaveEnemies()
+{
+    int current = currentWave;
+
+    int totalBaseEnemies = 10;
+    float growthFactor = 0.5f;
+
+    int totalEnemies = (int)(totalBaseEnemies + (current * current * growthFactor));
+
+    if (current <= 3)
+    {
+        totalEnemies = 5 + current * 2;
+    }
+
+    int numFAST = 0;
+    int numNORMAL = 0;
+    int numTANK = 0;
+
+    float ratioFAST = 0.0f;
+    float ratioNORMAL = 0.0f;
+    float ratioTANK = 0.0f;
+
+    if (current >= 5 && current % 5 == 0)
+    {
+        ratioFAST = 0.30f;
+        ratioNORMAL = 0.50f;
+        ratioTANK = 0.20f;
+        totalEnemies = (int)(totalEnemies * 1.5f);
+    }
+    else if (current < 5)
+    {
+        ratioFAST = 0.60f;
+        ratioNORMAL = 0.40f;
+        ratioTANK = 0.00f;
+    }
+    else
+    {
+        ratioFAST = 0.50f;
+        ratioNORMAL = 0.40f;
+        ratioTANK = 0.10f;
+    }
+
+    numFAST = (int)(totalEnemies * ratioFAST);
+    numNORMAL = (int)(totalEnemies * ratioNORMAL);
+
+    numTANK = totalEnemies - numFAST - numNORMAL;
+
+    waveSystem.SetNumOfFAST(numFAST, currentLevel);
+    waveSystem.SetNumOfNORMAL(numNORMAL, currentLevel);
+    waveSystem.SetNumOfTANK(numTANK, *this);
+
+    totalEnemiesInWave = totalEnemies;
+
+    currentWaveHealthMultiplier = 1.0f + (current - 1) * 0.1f;
+
+    int speedBoostWaves = (current - 1) / 5;
+    currentWaveSpeedMultiplier = 1.0f + speedBoostWaves * 0.05f;
 }

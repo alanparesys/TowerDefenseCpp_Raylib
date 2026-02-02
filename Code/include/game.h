@@ -1,141 +1,222 @@
-#ifndef GAME_H
-#define GAME_H
+#pragma once
 
 #include <raylib.h>
+#include <vector>
+#include <string>
+#include <memory>
 
-// --- 1. ENUMS (Doivent être déclarés en premier) ---
-enum CurrentScreen
+#include "enum.h"
+#include "castle.h"
+#include "tower.h"
+#include "assets.h"
+#include "pathpoint.h"
+#include "level.h"
+#include "wave_system.h"
+
+class Enemy;
+class Bullet;
+
+typedef struct GameData {
+    int masterVolume;
+    int musicVolume;
+    int sfxVolume;
+    int maxUnlockedLevel;
+    int bestWave;
+} GameData;
+
+class Game
 {
-    TITLE,
-    CHOOSE_LEVEL,
-    GAMEPLAY,
-    GAMEOVER
-};
+private:
+    CurrentScreen previousScreen;
+    CurrentScreen currentScreen;
+    CurrentLevel currentLevel;
 
-enum TowerType
-{
-    NONE = 0,
-    ARCHER,
-    WIZARD,
-    CATAPULT
-};
+    GameAssets assets;
+    Castle mainCastle;
+    Level level;
+    WaveSystemClass waveSystem;
+    TowerType currentDragState;
 
-enum EnemyType
-{
-    NORMAL = 0,
-    FAST,
-	TANK,
-    BOSS
-};
+    std::vector<Tower> towers;
+    std::vector<std::unique_ptr<Enemy>> enemies;
+    std::vector<Bullet> bullets;
+    std::vector<PathPoint> path;
 
-// --- 2. STRUCTS (Utilisent les Enums) ---
-struct Tower {
-    Vector2 pos;
-    int range;
-    bool exist;
-};
+    Vector2 spawnPoint;
+    Vector2 castlePosition;
 
-struct Castle {
-    Vector2 pos;
-	int life;
-	int maxLife;
-    bool exist;
-};
+    float spawnTimer;
 
-struct Enemy {
-    Vector2 pos;
-    int health;
-	int maxLife;
-	int damage;
-	float attackCooldown;
-    int nextPoint;
-	bool moving;
-    bool alive;
-	EnemyType type;
-};
+    int currentWave;
+    float waveSpawnTimer;
+    float timeBetweenSpawns;
+    float timeBetweenWaves;
+    float waveCooldownTimer;
+    bool isWaveActive;
+    int enemiesSpawnedThisWave;
+    int totalEnemiesInWave;
+    float waveAnnouncementTimer;
+    float currentWaveHealthMultiplier;
+    float currentWaveSpeedMultiplier;
+    int currentWaveIndex;
+    int enemiesSpawned;
+    float waveTimer;
 
-struct Bullet {
-    Vector2 pos;
-    Vector2 speed;
-    bool active;
-    TowerType type; // Maintenant TowerType est reconnu car déclaré au-dessus
-};
+    bool lifeBarButton = true;
+    bool damageNumberButton = true;
+    bool highlightPathButton = false;
+    bool buildPauseButton = false;
+    bool volumeButton = false;
+    bool resetButton = false;
+    bool creditsButton = false;
 
-struct GameAssets
-{
-    Texture2D mouseTexture;
-    Texture2D titleScreenTexture;
-    Texture2D levelSelectionTexture;
-    Texture2D shopIconTexture;
+    bool canClickSettings = true;
+    bool canClickHelp = true;
+
+    bool gameplayHelpButton = false;
+    bool towerHelpButton = false;
+    bool enemyHelpButton = false;
+
+    bool pauseGame = false;
+
+    int money;
+
+    int maxUnlockedLevel = 1;
+
+    const Rectangle shopArcherRect;
+    const Rectangle shopWizardRect;
+    const Rectangle shopCatapultRect;
+
+    const LevelData* currentLevelData = nullptr;
     
-    // life
-	Texture2D fullLifeTexture;
-	Texture2D life1Texture;
-	Texture2D life2Texture;
-	Texture2D life3Texture;
-    Texture2D life4Texture;
-    Texture2D life5Texture;
-    Texture2D life6Texture;
-    Texture2D life7Texture;
-    Texture2D life8Texture;
-    Texture2D life9Texture;
-    Texture2D life10Texture;
-    Texture2D life11Texture;
-    Texture2D life12Texture;
-    Texture2D life13Texture;
-    Texture2D life14Texture;
-    Texture2D life15Texture;
+    int bestWave = 0;
 
-    Texture2D castleTexture;
-    Texture2D archerTexture;
-    Texture2D wizardTexture;
-	Texture2D fireBallTexture;
-    Texture2D catapultTexture;
-    Texture2D lvl1ArcherTowerTexture;
-    Texture2D lvl1WizardTowerTexture;
-    Texture2D lvl1CatapultTowerTexture;
+    bool firstFrameTitleMusic = true;
+    bool firstFrameGameplayMusic = false;
+    bool firstFrameVictoryMusic = false;
+    bool firstFrameGameOverMusic = false;
+    bool isBossWaveActive = false;
 
-    Texture2D necromancerTexture;
-	Texture2D ferretTexture;
-    Texture2D cacodaemonTexture;
+    int masterVolume = 75;
+    int musicVolume = 75;
+    int sfxVolume = 75;
+
+    float timeScale = 1.0f;
+
+    bool canTowerBePlaced = true;
+
+    void CreatePath(Vector2 castlePos);
+
+    void LoadMapForLevel(CurrentLevel level);
+
+    void AddEnemy(EnemyType type, float healthMult, float speedMult, bool spawnBehindLastEnemy = false);
+    void AddLevelEnemy(EnemyType t);
+    bool BuyTower(Vector2 mousePos, TowerType type, int cost);
+    void AddTower(Vector2 mousePos, TowerType type);
+    void ClearDeadEntities();
+    void UpdateWaveSystem(float dt);
+    void StartNewWave();
+    void CalculateWaveEnemies();
+
+    void SaveGameData();
+    void LoadGameData();
+    bool IsPositionOnPath(Vector2 position) const;
+    void SetupLevel(CurrentLevel levelId);
+
+    void UpdateTitle();
+    void UpdateChooseLevel();
+    void UpdateSettings();
+    void UpdateHelp();
+    void UpdateVolumeOptions();
+    void UpdateGameplay(float dt);
+    void UpdateVictory();
+    void UpdateGameOver();
+
+    void ApplySettings();
+    void ApplyMasterVolume(float volume);
+    void ApplyMusicVolume(float volume);
+    void ApplySfxVolume(float volume);
+
+    void DrawTitle() const;
+    void DrawChooseLevel() const;
+    void DrawSettings() const;
+    void DrawHelp() const;
+
+    void DrawLvl1() const;
+    void DrawLvl2() const;
+    void DrawLvl3() const;
+    void DrawLvl4() const;
+    void DrawLvl5() const;
+    void DrawLvl6() const;
+    void DrawLvl7() const;
+    void DrawLvl8() const;
+    void DrawLvl9() const;
+    void DrawLvl10() const;
+    void DrawLvl11() const;
+    void DrawLvl12() const;
+    void DrawLvl13() const;
+    void DrawLvl14() const;
+    void DrawLvl15() const;
+
+    void DrawGameplay() const;
+    void DrawVictory() const;
+    void DrawGameOver() const;
+
+public:
+    Game();
+    ~Game();
+
+    void Init();
+    void Update(float dt);
+    void Draw();
+
+    void PlayTitleAudio();
+    void PlayGameplayAudio();
+    void PlayVictoryAudio();
+    void PlayGameOverAudio();
+
+    void SetScreen(CurrentScreen newScreen);
+    void LoadGame();
+    void SaveGame();
+
+    int GetMoney() const { return money; }
+    void GainMoney(int amount) { money += amount; }
+
+    bool IsLevelLocked(int levelNumber) const { return levelNumber > maxUnlockedLevel; }
+    int GetMaxUnlockedLevel() const { return maxUnlockedLevel; }
+    void SetMaxUnlockedLevel(int lvl) { maxUnlockedLevel = lvl; } // <--- Une seule fois !
+
+    bool GetLifeBarButton() const { return lifeBarButton; }
+    bool GetDamageNumberButton() const { return damageNumberButton; }
+    bool GetHighlightPathButton() const { return highlightPathButton; }
+    bool GetBuildPauseButton() const { return buildPauseButton; }
+    bool GetVolumeButton() const { return volumeButton; }
+    bool GetResetButton() const { return resetButton; }
+    bool GetCreditsButton() const { return creditsButton; }
+
+    bool GetCanClickSettings() const { return canClickSettings; }
+    bool GetCanClickHelp() const { return canClickHelp; }
+
+    bool GetPauseGame() const { return pauseGame; }
+    bool GetCanTowerBePlaced() const { return canTowerBePlaced; }
+    const GameAssets& GetAssets() const { return assets; }
+
+    WaveSystemClass& GetWaveSystem() { return waveSystem; }
+    int GetCurrentWave() const { return currentWave; }
+    void SetTimeBetweenSpawns(float time) { timeBetweenSpawns = time; }
+    void SetTimeBetweenWaves(float time) { timeBetweenWaves = time; }
+    float GetTimeBetweenSpawns() const { return timeBetweenSpawns; }
+    float GetTimeBetweenWaves() const { return timeBetweenWaves; }
+    bool IsWaveActive() const { return isWaveActive; }
+    int GetEnemiesSpawnedThisWave() const { return enemiesSpawnedThisWave; }
+    int GetTotalEnemiesInWave() const { return totalEnemiesInWave; }
+    float GetWaveCooldownTimer() const { return waveCooldownTimer; }
+    float GetWaveAnnouncementTimer() const { return waveAnnouncementTimer; }
+
+    void UnlockNextLevel(int currentLevelFinished) {
+        if (currentLevelFinished == maxUnlockedLevel && maxUnlockedLevel < 15) {
+            maxUnlockedLevel++;
+            SaveGame();
+        }
+    }
 };
-
-// --- 3. PROTOTYPES DE FONCTIONS ---
-
-void GameInit();
-
-void LoadGameAssets(GameAssets& assets);
-void UnloadGameAssets(GameAssets& assets);
-
-void GameUpdate(GameAssets& assets);
-void CustomMouse(GameAssets& assets);
-void GameDraw(const GameAssets& assets);
-void DrawLifeBar(const GameAssets& assets);
-
-void UpdateTitle(const GameAssets& assets);
-void UpdateChooseLevel(const GameAssets& assets);
-void UpdateGameplay(const GameAssets& assets);
-void UpdateGameOver();
-
-void CastlePlacement();
-void TowersPlacement();
-
-void AddCastle(Vector2 mousePos);
-void AddArcherTower(Vector2 mousePos);
-void AddWizardTower(Vector2 mousePos);
-void AddCatapultTower(Vector2 mousePos);
-void AddEnemy();
-void MoveEnemies();
-void EnemiesAttack();
-
-
-// J'ai ajouté le point-virgule manquant ici
-void ShootBullet(Vector2 from, Vector2 to, TowerType type);
-
-void CastlesShoot();
-void TowerShoot();
-void MoveBullets();
-void DrawVectorLines();
-void CreatePath(Vector2 castlePos);
-
-#endif // Fin du fichier

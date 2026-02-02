@@ -184,13 +184,29 @@ xcopy /y /d /s  "$(SolutionDir)Assets\*" "$(OutDir)Assets\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Code\src\assets.cpp" />
+    <ClCompile Include="Code\src\bullet.cpp" />
+    <ClCompile Include="Code\src\castle.cpp" />
+    <ClCompile Include="Code\src\enemy.cpp" />
     <ClCompile Include="Code\src\game.cpp" />
+    <ClCompile Include="Code\src\level.cpp" />
     <ClCompile Include="Code\src\main.cpp" />
-    <ClCompile Include="Code\src\overload.cpp" />
+    <ClCompile Include="Code\src\sprites.cpp" />
+    <ClCompile Include="Code\src\tower.cpp" />
+    <ClCompile Include="Code\src\wave_system.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Code\include\assets.h" />
+    <ClInclude Include="Code\include\bullet.h" />
+    <ClInclude Include="Code\include\castle.h" />
+    <ClInclude Include="Code\include\enemy.h" />
+    <ClInclude Include="Code\include\enum.h" />
     <ClInclude Include="Code\include\game.h" />
-    <ClInclude Include="Code\include\overload.h" />
+    <ClInclude Include="Code\include\level.h" />
+    <ClInclude Include="Code\include\pathpoint.h" />
+    <ClInclude Include="Code\include\sprites.h" />
+    <ClInclude Include="Code\include\tower.h" />
+    <ClInclude Include="Code\include\wave_system.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

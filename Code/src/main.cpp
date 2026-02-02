@@ -1,32 +1,25 @@
 #include <raylib.h>
 #include "game.h"
 
-int main() {
-    InitWindow(1920, 1200, "Tower Defense Simple");
+int main()
+{
+    InitWindow(1920, 1200, "Tower Defense");
     SetTargetFPS(60);
+	HideCursor();
+    InitAudioDevice();
 
-    HideCursor();
-
-    GameInit();
-
-    GameAssets assets;
-    LoadGameAssets(assets);
+    Game game;
+    game.Init();
 
     while (!WindowShouldClose())
     {
-        if (IsKeyPressed(KEY_F)) ToggleFullscreen();
-
-        GameUpdate(assets);
-
-        BeginDrawing();
-        ClearBackground(DARKGRAY);
-        
-        CustomMouse(assets);
-
-        EndDrawing();
+        game.Update(GetFrameTime());
+        game.Draw();
     }
 
-    UnloadGameAssets(assets);
+    game.SaveGame();
+
+    CloseAudioDevice();
     CloseWindow();
     return 0;
 }
